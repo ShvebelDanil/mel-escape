@@ -204,8 +204,9 @@
 <!-- Подключаем библиотеку из новой папки lib -->
 <script src="lib/three.min.js"></script>
 <!-- Подключаем закодированные картинки из папки source (ДО загрузки игры!) -->
-<script src="source/assets.js"></script>
-<!-- Подключаем логику игры из папки source -->
-<script src="source/game.js"></script>
+    <script src="source/assets.js"></script>
+    
+    <!-- ТЕПЕРЬ ПОДКЛЮЧАЕМ ГЛАВНЫЙ ФАЙЛ КАК МОДУЛЬ -->
+    <script type="module" src="source/main.js"></script>
 </body>
 </html>
