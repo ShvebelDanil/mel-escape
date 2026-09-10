@@ -1,38 +1,14 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
+import { createMelVisual } from '../assets/models/mel-visual.js';
+import { createGrannyVisual } from '../assets/models/granny-visual.js';
 
 export function buildMel() {
-  const root = new THREE.Group(), pivot = GFX.put(root, new THREE.Group(), 0, 0.92, 0), inner = GFX.put(pivot, new THREE.Group(), 0, -0.92, 0);
-  const SKIN = '#f0c19b', HAIR = '#3d2a1a', BLAZER = '#2c3a6b', PANTS = '#23262e', SHOE = '#17181c';
-  GFX.put(inner, GFX.box(0.62, 0.58, 0.34, BLAZER), 0, 1.24, 0); GFX.put(inner, GFX.box(0.18, 0.24, 0.03, '#f5f5f2'), 0, 1.36, 0.18); GFX.put(inner, GFX.box(0.64, 0.09, 0.36, '#17181c'), 0, 0.96, 0);
-  const legParts = [[0.21, 0.62, 0.24, PANTS, -0.34], [0.23, 0.13, 0.34, SHOE, -0.68, 0.05]];
-  const legL = GFX.limb(inner, -0.15, 0.92, legParts), legR = GFX.limb(inner, 0.15, 0.92, legParts);
-  const armParts = [[0.16, 0.5, 0.18, BLAZER, -0.22], [0.13, 0.14, 0.14, SKIN, -0.52]];
-  const armL = GFX.limb(inner, -0.39, 1.46, armParts), armR = GFX.limb(inner, 0.39, 1.46, armParts);
-  const diary = GFX.put(armR, GFX.buildDiaryMesh(), 0, -0.64, 0.14); diary.rotation.x = Math.PI / 2; diary.visible = false;
-  const headG = GFX.put(inner, new THREE.Group(), 0, 1.78, 0);
-  headG.add(new THREE.Mesh(GFX.GBox(0.54, 0.56, 0.52), [GFX.M(HAIR), GFX.M(HAIR), GFX.M(HAIR), GFX.M(SKIN), new THREE.MeshLambertMaterial({ map: GFX.texMel }), GFX.M(HAIR)]));
-  GFX.put(headG, GFX.box(0.58, 0.14, 0.56, HAIR), 0, 0.28, 0); GFX.put(headG, GFX.box(0.58, 0.34, 0.12, HAIR), 0, 0.1, -0.24);
-  GFX.put(inner, GFX.box(0.48, 0.54, 0.22, '#d23f2e'), 0, 1.24, -0.3); GFX.put(inner, GFX.box(0.32, 0.22, 0.08, '#a52a1d'), 0, 1.06, -0.44);
-  for (const sx of [-0.2, 0.2]) GFX.put(inner, GFX.box(0.09, 0.5, 0.04, '#7a1f16'), sx, 1.3, -0.16);
-  const shadow = GFX.shadowDisc(root, 0.52, GFX.SHADOW_MAT_CHAR);
-  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
+    return createMelVisual(THREE, GFX);
 }
 
 export function buildGranny() {
-  const root = new THREE.Group(), inner = new THREE.Group(); root.add(inner);
-  const DRESS = '#566273', SKIN = '#a9abb2', HAIR = '#ececec';
-  GFX.put(inner, GFX.cyl(0.38, 0.68, 1.2, 12, DRESS), 0, 0.6, 0); GFX.put(inner, GFX.box(0.6, 0.44, 0.34, DRESS), 0, 1.38, 0); GFX.put(inner, GFX.box(0.5, 0.1, 0.36, '#f2efe4'), 0, 1.56, 0);
-  const armParts = [[0.16, 0.52, 0.18, DRESS, -0.22], [0.14, 0.15, 0.14, SKIN, -0.54]];
-  const armL = GFX.limb(inner, -0.38, 1.5, armParts), armR = GFX.limb(inner, 0.38, 1.5, armParts);
-  GFX.put(armR, GFX.cyl(0.035, 0.035, 1.05, 8, '#c89b5a'), 0, -0.6, 0.25).rotation.x = Math.PI / 3.2;
-  const headG = GFX.put(inner, new THREE.Group(), 0, 1.86, 0);
-  headG.add(new THREE.Mesh(GFX.GBox(0.58, 0.6, 0.56), [GFX.M(SKIN), GFX.M(SKIN), GFX.M(HAIR), GFX.M(SKIN), new THREE.MeshLambertMaterial({ map: GFX.texGranny }), GFX.M(HAIR)]));
-  GFX.put(headG, GFX.box(0.62, 0.12, 0.6, HAIR), 0, 0.3, 0); GFX.put(headG, GFX.sph(0.17, 10, 10, HAIR), 0, 0.3, -0.28);
-  for (const fx of [-0.18, 0.18]) GFX.put(inner, GFX.box(0.2, 0.14, 0.32, '#2e2e33'), fx, 0.07, 0.05);
-  const shadow = GFX.shadowDisc(root, 0.6, GFX.SHADOW_MAT_CHAR);
-  root.scale.setScalar(1.1);
-  return { root, inner, armL, armR, headG, shadow };
+  return createGrannyVisual(THREE, GFX);
 }
 
 export function buildClassroom() {
