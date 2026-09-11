@@ -2,6 +2,8 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as ENT from './entities.js';
 import * as LVL from './level.js';
+import * as SK from './skins.js';
+import * as SHOP from './shop.js';
 
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, hintT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0 };
@@ -48,7 +50,7 @@ function stumble(o) {
   o.stumbled = true; const movingPlusX = U.LANES[player.lane] > player.x;
   let nl = nearestLane(player.x);
   if (Math.abs(U.LANES[nl] - o.x) < o.hw + 0.35) nl = U.clamp(nl + (movingPlusX ? -1 : 1), 0, 2);
-  player.lane = nl; player.invuln = 1.4; G.speed = Math.max(U.BASE_SPEED * 0.85, G.speed * 0.55);
+  player.lane = nl; player.invuln = 1.4;
   granny.closeT = 5; granny.targetZOff = -2.7; G.shake = Math.max(G.shake, 0.45);
   U.Sound.stumble(); U.Sound.growl(); U.replayCss(U.UI.flash); U.setYell(U.pick(YELLS)); ENT.burst(player.x, player.y + 1, player.z, '#ffd94a', 5, 2.2);
 }
@@ -56,12 +58,21 @@ function caught() {
   G.state = 'over'; G.overT = 0; G.overShown = false; granny.catchMode = true; granny.targetZOff = -0.85; G.shake = 0.8;
   U.Sound.crash(); U.Sound.growl(); U.replayCss(U.UI.flash); ENT.burst(player.x, player.y + 1.2, player.z, '#b0451f', 8, 3);
   U.Sdk.gameplayStop(); const m = Math.floor(G.dist); const isRecord = m > U.save.best;
-  if (isRecord) U.save.best = m; U.save.bottles += G.bottles - G.bankedBottles; G.bankedBottles = G.bottles;
+  if (isRecord) U.save.best = m;
+  const gained = G.bottles - G.bankedBottles; U.save.bottles += gained; U.save.currency += gained; G.bankedBottles = G.bottles;
   U.persistSave(); if (U.UI.over) U.UI.over.dataset.record = isRecord ? '1' : '0';
 }
 
-function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; }
+function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; SHOP.refreshCurrency(); }
 function showMenu() { setupMenuScene(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); }
+function openShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open(); }
+function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
+function applyPlayerSkin(id) {
+  const next = ENT.buildMel(id); if (next === player.node) return;
+  const old = player.node;
+  if (old) { GFX.scene.remove(old.root); next.diary.visible = old.diary.visible; }
+  player.node = next; GFX.scene.add(next.root);
+}
 function diaryTaken(on) { deskScene.diary.visible = !on; player.node.diary.visible = on; }
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.inner.visible = true; }
 function resetRun() {
@@ -106,9 +117,9 @@ function updateIntro(dt) {
   if (!intro.alert && t >= 1.6) { intro.alert = true; U.setYell('МОЙ ДНЕВНИК!!!'); U.Sound.growl(); }
   const gn = granny.node;
   if (intro.alert) {
-    gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -2.4, 6, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -2.7 + Math.sin(t * 18) * 0.25, 6, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, -0.12, 6, dt); gn.inner.position.y = Math.abs(Math.sin(t * 10)) * 0.1; gn.root.position.x = U.damp(gn.root.position.x, U.GRANNY_INTRO_X, 2.5, dt);
+    gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -2.4, 6, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -2.7 + Math.sin(t * 18) * 0.25, 6, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, -0.12, 6, dt); gn.inner.position.y = -0.92 + Math.abs(Math.sin(t * 10)) * 0.1; gn.root.position.x = U.damp(gn.root.position.x, U.GRANNY_INTRO_X, 2.5, dt);
     if (t >= 2.0) gn.root.position.z += 8.2 * dt;
-  } else { gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -1.25, 4, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -1.45, 4, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, 0.42, 3, dt); gn.inner.position.y = -0.04; }
+  } else { gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -1.25, 4, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -1.45, 4, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, 0.42, 3, dt); gn.inner.position.y = -0.96; }
   if (t >= 3.0) beginRun();
 }
 function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
@@ -167,11 +178,11 @@ function animatePlayer(dt) {
 }
 function animateGranny(dt) {
   const n = granny.node; granny.zOff = U.damp(granny.zOff, granny.targetZOff, 2.4, dt);
-  if (G.state === 'menu' || G.state === 'intro') { n.armL.rotation.x = U.damp(n.armL.rotation.x, -1.3, 4, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -1.7, 4, dt); n.inner.position.y = -0.04; n.headG.rotation.x = 0; return; }
+  if (G.state === 'menu' || G.state === 'intro') { n.armL.rotation.x = U.damp(n.armL.rotation.x, -1.3, 4, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -1.7, 4, dt); n.inner.position.y = -0.96; n.headG.rotation.x = 0; return; }
   if (G.state === 'over') { n.root.position.x = U.damp(n.root.position.x, player.x, 3, dt); n.root.position.z = U.damp(n.root.position.z, player.z - 0.85, 5, dt); } else { n.root.position.x = U.damp(n.root.position.x, player.x, 2, dt); n.root.position.z = player.z + granny.zOff; }
   n.root.rotation.y = 0; granny.phase += dt * (G.state === 'over' ? 4 : 7 + G.speed * 0.5); const s = Math.sin(granny.phase);
-  if (granny.catchMode) { n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.5, 6, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.7, 6, dt); n.headG.rotation.x = 0.15; n.inner.position.y = Math.abs(Math.cos(granny.phase)) * 0.06; }
-  else { n.armL.rotation.x = -s * 0.7; n.armR.rotation.x = -1.9 + Math.sin(granny.phase * 0.7) * 0.35; n.headG.rotation.x = 0; n.inner.position.y = Math.abs(Math.cos(granny.phase)) * 0.1; n.inner.rotation.z = s * 0.04; }
+  if (granny.catchMode) { n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.5, 6, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.7, 6, dt); n.headG.rotation.x = 0.15; n.inner.position.y = -0.92 + Math.abs(Math.cos(granny.phase)) * 0.06; }
+  else { n.armL.rotation.x = -s * 0.7; n.armR.rotation.x = -1.9 + Math.sin(granny.phase * 0.7) * 0.35; n.headG.rotation.x = 0; n.inner.position.y = -0.92 + Math.abs(Math.cos(granny.phase)) * 0.1; n.inner.rotation.z = s * 0.04; }
 }
 
 let lastT = 0;
@@ -179,6 +190,7 @@ function loop(t) {
   requestAnimationFrame(loop); const dt = U.clamp((t - lastT) / 1000, 0, 0.05); lastT = t;
   if (G.state === 'loading') return;
   if (G.state === 'paused') { GFX.renderer.render(GFX.scene, GFX.camera); return; }
+  if (G.state === 'shop') { SHOP.update(dt); GFX.renderer.render(GFX.scene, GFX.camera); return; }
   if (G.state === 'run') {
     G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
     player.groundY = getGroundY();
@@ -217,7 +229,7 @@ function bindInput() {
     switch (c) {
       case 'ArrowLeft': case 'KeyA': move(1); break; case 'ArrowRight': case 'KeyD': move(-1); break;
       case 'ArrowUp': case 'KeyW': case 'Space': jump(); break; case 'ArrowDown': case 'KeyS': roll(); break;
-      case 'Escape': case 'KeyP': if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); break;
+      case 'Escape': case 'KeyP': if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); else if (G.state === 'shop') exitShop(); break;
       case 'Enter': if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); break;
     }
   });
@@ -234,6 +246,7 @@ function bindInput() {
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
+  on('shopBtn', act(openShop));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
@@ -248,13 +261,14 @@ function init() {
   if (initStarted) return; initStarted = true; U.cacheUI();
   GFX.initGraphics(U.UI.game); GFX.buildEnvTextures();
   for (let i = 0; i < U.SEG_COUNT; i++) { const seg = GFX.buildSegment(i); segments.push(seg); GFX.scene.add(seg); }
-  player.node = ENT.buildMel(); GFX.scene.add(player.node.root);
+  player.node = ENT.buildMel(SK.selectedId()); GFX.scene.add(player.node.root);
   granny.node = ENT.buildGranny(); GFX.scene.add(granny.node.root);
   deskScene = ENT.buildClassroom(); GFX.scene.add(deskScene.group);
   ENT.initParticles();
   const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
-  if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
+  if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
   if (U.UI.hint) U.UI.hint.innerHTML = '<span>⬅️➡️ полосы</span><span>⬆️ прыжок</span><span>⬇️ подкат</span>';
+  SHOP.initShop({ setPreviewSkin: applyPlayerSkin, getPlayerNode: () => player.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));

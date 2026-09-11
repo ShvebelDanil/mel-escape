@@ -1,10 +1,10 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
-import { createMelVisual } from '../assets/models/mel6-visual.js';
+import * as SK from './skins.js';
 import { createGrannyVisual } from '../assets/models/granny-visual.js';
 
-export function buildMel() {
-    return createMelVisual(THREE, GFX);
+export function buildMel(skinId) {
+    return SK.buildSkinNode(skinId || SK.selectedId());
 }
 
 export function buildGranny() {

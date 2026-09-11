@@ -17,12 +17,14 @@ export function weightedPick(items, weightOf) {
 export const UI = {};
 export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn',
   'flash', 'yell', 'bottleNum', 'score', 'hint', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
-  'overBest', 'newRecord', 'musicBtn', 'soundBtn', 'game'];
+  'overBest', 'newRecord', 'musicBtn', 'soundBtn', 'game',
+  'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
+  'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
 export function show(el, on) { if (el) el.classList.toggle('hidden', !on); }
-export const SCREENS = ['menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn'];
+export const SCREENS = ['menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn', 'shop'];
 export function screens(...ids) { for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0); }
 
 export const LANES = [-2.3, 0, 2.3];
@@ -40,11 +42,15 @@ export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-export const save = { best: 0, bottles: 0, music: 1, sound: 1 };
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', music: 1, sound: 1 };
+const cleanSkinList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 export function readLocalSave() {
   try {
     const s = JSON.parse(localStorage.getItem('melEscapeSave') || 'null');
-    if (s) { save.best = s.best | 0; save.bottles = s.bottles | 0; save.music = s.music !== 0 ? 1 : 0; save.sound = s.sound !== 0 ? 1 : 0; }
+    if (s) {
+      save.best = s.best | 0; save.bottles = s.bottles | 0; save.music = s.music !== 0 ? 1 : 0; save.sound = s.sound !== 0 ? 1 : 0;
+      save.currency = s.currency | 0; save.ownedSkins = cleanSkinList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
+    }
   } catch (e) {}
 }
 export function syncToggleUI() {
@@ -55,7 +61,7 @@ export function syncToggleUI() {
 }
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound }, false)).catch(() => {});
+  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin }, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -86,11 +92,16 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         if (typeof d.music === 'number') save.music = d.music ? 1 : 0;
         if (typeof d.sound === 'number') save.sound = d.sound ? 1 : 0;
+      }
+      if (d) {
+        if (typeof d.currency === 'number') save.currency = Math.max(save.currency, d.currency | 0);
+        for (const id of cleanSkinList(d.ownedSkins)) if (save.ownedSkins.indexOf(id) < 0) save.ownedSkins.push(id);
+        if (typeof d.selectedSkin === 'string' && d.selectedSkin) save.selectedSkin = d.selectedSkin;
       }
       return true;
     }).catch(() => false);
