@@ -1,18 +1,27 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
+import * as PT from './pets.js';
 
 // Магазин живёт отдельно от игровой логики: он только ставит уже существующего
-// Мэла в уже существующий класс и рулит собственным UI.
+// Мэла (и питомца) в уже существующий класс и рулит собственным UI.
 const SHOP_Z = -7.4, CAM_Z = -2.95;
 
-let deps = null, index = 0, modalOpen = false;
+let deps = null, mode = 'skins', index = 0, modalOpen = false;
+
+function cat() {
+  return mode === 'pets'
+    ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, select: PT.select, preview: id => deps.setPreviewPet(id) }
+    : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, select: SK.select, preview: id => deps.setPreviewSkin(id) };
+}
 
 export function initShop(d) {
   deps = d;
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };
   const act = fn => () => { if (U.adBusy || modalOpen) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('shopBackBtn', act(() => deps.exitToMenu()));
+  on('shopTabSkins', act(() => setMode('skins')));
+  on('shopTabPets', act(() => setMode('pets')));
   on('skinPrevBtn', act(() => cycle(-1)));
   on('skinNextBtn', act(() => cycle(1)));
   on('skinAction', act(() => action()));
@@ -20,10 +29,13 @@ export function initShop(d) {
   const mx = U.$('shopModalClose'); if (mx) mx.addEventListener('click', () => { U.Sound.click(); closeModal(); });
 }
 
-export function open() {
-  index = Math.max(0, SK.SKINS.findIndex(s => s.id === SK.selectedId()));
+export function open(initialMode) {
+  mode = initialMode === 'pets' ? 'pets' : 'skins';
+  const c = cat();
+  index = Math.max(0, c.list.findIndex(s => s.id === c.selectedId()));
   closeModal();
-  deps.setPreviewSkin(SK.SKINS[index].id);
+  deps.setPreviewSkin(SK.selectedId());
+  deps.setPreviewPet(PT.selectedId());
   const g = deps.getGrannyNode(); if (g) g.root.visible = false;
   U.screens('shop');
   refresh();
@@ -31,32 +43,45 @@ export function open() {
 
 export function close() {
   deps.setPreviewSkin(SK.selectedId());
+  deps.setPreviewPet(PT.selectedId());
+  const p = deps.getPlayerNode(); if (p) p.root.visible = true;
   const g = deps.getGrannyNode(); if (g) g.root.visible = true;
   closeModal();
 }
 
+function setMode(next) {
+  if (mode === next) return;
+  mode = next;
+  const c = cat();
+  index = Math.max(0, c.list.findIndex(s => s.id === c.selectedId()));
+  c.preview(c.list[index].id);
+  refresh();
+}
+
 function cycle(dir) {
-  index = (index + dir + SK.SKINS.length) % SK.SKINS.length;
-  deps.setPreviewSkin(SK.SKINS[index].id);
+  const c = cat();
+  index = (index + dir + c.list.length) % c.list.length;
+  c.preview(c.list[index].id);
   refresh();
 }
 
 function action() {
-  const s = SK.SKINS[index];
-  if (SK.isOwned(s.id)) {
-    if (SK.select(s.id)) { U.Sound.coin(); refresh(); }
+  const c = cat(), s = c.list[index];
+  const noun = mode === 'pets' ? 'питомца' : 'скина';
+  if (c.isOwned(s.id)) {
+    if (c.select(s.id)) { U.Sound.coin(); refresh(); }
     return;
   }
   if (U.save.currency < s.price) {
-    showModal('err', 'НЕДОСТАТОЧНО ЧЕКУШЕК!', 'Для покупки нужно ' + s.price + ' чекушек. У тебя только ' + U.save.currency + '.', 'ПОНЯТНО');
+    showModal('err', 'НЕДОСТАТОЧНО ЧЕКУШЕК!', 'Для покупки ' + noun + ' нужно ещё ' + (s.price - U.save.currency) + ' чекушек.', 'ПОНЯТНО');
     U.Sound.stumble();
     return;
   }
-  if (SK.buy(s.id)) {
-    SK.select(s.id);
+  if (c.buy(s.id)) {
+    c.select(s.id);
     U.Sound.coin();
     refresh();
-    showModal('ok', 'СКИН КУПЛЕН!', 'Теперь этот скин доступен в твоём гардеробе.', 'ОК');
+    showModal('ok', 'ПОКУПКА СОВЕРШЕНА!', mode === 'pets' ? 'Питомец теперь доступен для выбора.' : 'Теперь этот скин доступен в твоём гардеробе.', 'ОК');
   }
 }
 
@@ -79,7 +104,9 @@ export function refreshCurrency() {
 
 function refresh() {
   refreshCurrency();
-  const s = SK.SKINS[index], owned = SK.isOwned(s.id), selected = SK.selectedId() === s.id;
+  const c = cat(), s = c.list[index], owned = c.isOwned(s.id), selected = c.selectedId() === s.id;
+  if (U.UI.shopTabSkins) U.UI.shopTabSkins.dataset.active = mode === 'skins' ? '1' : '0';
+  if (U.UI.shopTabPets) U.UI.shopTabPets.dataset.active = mode === 'pets' ? '1' : '0';
   if (U.UI.skinName) U.UI.skinName.textContent = s.name;
   if (U.UI.skinDesc) U.UI.skinDesc.textContent = s.desc;
   const btn = U.UI.skinAction;
@@ -91,7 +118,7 @@ function refresh() {
   }
   const dots = U.UI.skinDots;
   if (dots) {
-    if (dots.children.length !== SK.SKINS.length) { dots.innerHTML = ''; for (let i = 0; i < SK.SKINS.length; i++) dots.appendChild(document.createElement('i')); }
+    if (dots.children.length !== c.list.length) { dots.innerHTML = ''; for (let i = 0; i < c.list.length; i++) dots.appendChild(document.createElement('i')); }
     for (let i = 0; i < dots.children.length; i++) dots.children[i].className = i === index ? 'on' : '';
   }
   renderPriceRow(s, owned);
@@ -112,6 +139,7 @@ function renderPriceRow(s, owned) {
 export function update(dt) {
   const n = deps.getPlayerNode(); if (!n) return;
   const now = performance.now();
+  n.root.visible = mode === 'skins';
   n.root.position.set(0, 0, SHOP_Z);
   n.root.rotation.set(0, Math.sin(now / 1600) * 0.22, 0);
   n.pivot.rotation.x = 0;
@@ -125,6 +153,17 @@ export function update(dt) {
   n.inner.position.y = -0.92 + Math.sin(now / 500) * 0.02;
   n.shadow.position.y = 0.02;
   n.shadow.scale.setScalar(1);
+
+  const pn = deps.getPetNode();
+  if (pn) {
+    pn.root.visible = mode === 'pets';
+    pn.root.position.set(0, 0, SHOP_Z);
+    pn.root.scale.setScalar(1.7);
+    pn.root.rotation.y = Math.sin(now / 1600) * 0.22;
+    pn.bob.position.y = Math.sin(now / 450) * 0.03;
+    pn.tailPivot.rotation.y = Math.sin(now / 300) * 0.35;
+    pn.shadow.position.y = 0.02;
+  }
 
   const portrait = window.innerHeight > window.innerWidth, fov = portrait ? 56 : 44;
   if (Math.abs(GFX.camera.fov - fov) > 0.3) { GFX.camera.fov = fov; GFX.camera.updateProjectionMatrix(); }

@@ -157,6 +157,13 @@
   #skinPrevBtn { left:calc(14px + env(safe-area-inset-left)); }
   #skinNextBtn { right:calc(14px + env(safe-area-inset-right)); }
 
+  #shopTabs { position:absolute; top:calc(66px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    display:flex; gap:4px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.16); border-radius:14px; padding:4px; }
+  .tab-btn { appearance:none; border:none; cursor:pointer; font-family:inherit; font-weight:800; color:#cfe0d8;
+    background:transparent; border-radius:10px; padding:8px 18px; font-size:clamp(12px,3.2vw,14px);
+    text-transform:uppercase; letter-spacing:.4px; }
+  .tab-btn[data-active="1"] { background:linear-gradient(180deg,#ffe066,#ffb400); color:#3a2a00; }
+
   #skinCard {
     width:min(430px, calc(100% - 28px));
     margin:0 auto calc(20px + env(safe-area-inset-bottom));
@@ -251,6 +258,7 @@
   </div>
   <button class="btn" id="playBtn">▶ Играть</button>
   <button class="btn shop" id="shopBtn">🛍 Магазин</button>
+  <button class="btn ghost" id="petsBtn">🐾 Питомцы</button>
   <div class="hint-row">
     <span><b>←</b><b>→</b> полосы</span>
     <span><b>↑</b> прыжок</span>
@@ -287,8 +295,12 @@
     <button class="btn ghost small" id="shopBackBtn">← Назад</button>
     <div class="cur-badge"><img id="shopCurIcon" alt=""><span id="shopCurrency">0</span></div>
   </div>
-  <button class="arrow-btn" id="skinPrevBtn" aria-label="Предыдущий скин">❮</button>
-  <button class="arrow-btn" id="skinNextBtn" aria-label="Следующий скин">❯</button>
+  <div id="shopTabs">
+    <button class="tab-btn" id="shopTabSkins" data-active="1">Скины</button>
+    <button class="tab-btn" id="shopTabPets">Питомцы</button>
+  </div>
+  <button class="arrow-btn" id="skinPrevBtn" aria-label="Предыдущий вариант">❮</button>
+  <button class="arrow-btn" id="skinNextBtn" aria-label="Следующий вариант">❯</button>
   <div id="skinCard">
     <div id="skinName">—</div>
     <div id="skinDesc"></div>

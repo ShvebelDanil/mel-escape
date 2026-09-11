@@ -3,15 +3,18 @@ import * as GFX from './graphics.js';
 import * as ENT from './entities.js';
 import * as LVL from './level.js';
 import * as SK from './skins.js';
+import * as PT from './pets.js';
 import * as SHOP from './shop.js';
 
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, hintT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0 };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
+export const pet = { node: null, x: 0, z: 0, phase: 0, headingY: 0 };
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
 
 let deskScene = null, segments = [];
 const YELLS = ['СТОЙ, ХУЛИГАН!', 'ПОПАЛСЯ!', 'БЕГЛЕЦ!', 'В КЛАСС ВЕРНИСЬ!', 'А Я ПРЕДУПРЕЖДАЛА!', 'ДОМОЙ!'];
+const PET_LAG_Z = 0.75, PET_SIDE_X = 0.5, PET_FOLLOW_X = 6;
 
 function move(dir) {
   if (G.state !== 'run') return;
@@ -66,12 +69,37 @@ function caught() {
 function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; SHOP.refreshCurrency(); }
 function showMenu() { setupMenuScene(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); }
 function openShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open(); }
+function openPetsShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open('pets'); }
 function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
 function applyPlayerSkin(id) {
   const next = ENT.buildMel(id); if (next === player.node) return;
   const old = player.node;
   if (old) { GFX.scene.remove(old.root); next.diary.visible = old.diary.visible; }
   player.node = next; GFX.scene.add(next.root);
+}
+function applyPlayerPet(id) {
+  const next = PT.buildPetNode(id); if (next === pet.node) return;
+  if (pet.node) GFX.scene.remove(pet.node.root);
+  pet.node = next;
+  if (next) GFX.scene.add(next.root);
+}
+function syncPetBehindPlayer() {
+  pet.x = player.x + PET_SIDE_X; pet.z = player.z - PET_LAG_Z; pet.phase = 0; pet.headingY = 0;
+  if (pet.node) { pet.node.root.position.set(pet.x, 0, pet.z); pet.node.root.rotation.y = 0; pet.node.root.scale.setScalar(1); pet.node.root.visible = true; }
+}
+function updatePet(dt) {
+  const n = pet.node; if (!n) return;
+  const targetX = player.x + PET_SIDE_X;
+  pet.x = U.damp(pet.x, targetX, PET_FOLLOW_X, dt);
+  pet.z = player.z - PET_LAG_Z;
+  pet.headingY = U.damp(pet.headingY, U.clamp(-(targetX - pet.x) * 1.6, -0.5, 0.5), 6, dt);
+  n.root.position.set(pet.x, 0, pet.z);
+  n.root.rotation.y = pet.headingY;
+  pet.phase += dt * (6 + G.speed * 0.5);
+  const bounce = Math.abs(Math.sin(pet.phase)) * 0.09;
+  n.bob.position.y = bounce;
+  n.tailPivot.rotation.y = Math.sin(pet.phase * 0.6) * 0.3;
+  n.shadow.scale.setScalar(U.clamp(1 - bounce * 1.2, 0.6, 1));
 }
 function diaryTaken(on) { deskScene.diary.visible = !on; player.node.diary.visible = on; }
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.inner.visible = true; }
@@ -89,16 +117,18 @@ function resetRun() {
 function setupMenuScene() {
   resetRun(); G.state = 'menu'; G.camBlend = 0; camSnap = true; player.z = -4.6; player.node.root.rotation.y = Math.PI;
   diaryTaken(false); granny.zOff = -9.2; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -10.7); granny.node.root.rotation.y = 0;
+  if (pet.node) pet.node.root.visible = false;
   Object.assign(intro, { t: 0, grab: false, alert: false, hop: false, turn: false, faceY: Math.PI });
 }
 function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; U.screens('skipIntroBtn'); U.Sound.ensure(); }
 function beginRun() {
   G.state = 'run'; intro.runStartZ = player.z; G.camBlend = 1; G.speed = U.BASE_SPEED; granny.zOff = granny.node.root.position.z - player.z; granny.targetZOff = -9.2;
+  syncPetBehindPlayer();
   U.show(U.UI.skipIntroBtn, false); U.show(U.UI.hud, true); G.hintT = 3.2; if (U.UI.hint) U.UI.hint.classList.add('on');
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; U.screens('hud'); G.hintT = 0; if (U.UI.hint) U.UI.hint.classList.remove('on'); U.Sound.ensure(); U.Sdk.gameplayStart(); }
+function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); G.hintT = 0; if (U.UI.hint) U.UI.hint.classList.remove('on'); U.Sound.ensure(); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -215,6 +245,7 @@ function loop(t) {
     player.node.root.rotation.z = Math.sin(G.overT * 9) * 0.16 * Math.max(0, 1 - G.overT); player.node.inner.rotation.x = U.damp(player.node.inner.rotation.x, -0.35, 4, dt);
     if (G.overT > 1.15 && !G.overShown) showOverScreen();
   } else if (G.state === 'menu') { G.camBlend = Math.max(0, G.camBlend - dt * 1.6); } else if (G.state === 'intro') { updateIntro(dt); }
+  if (G.state === 'run' || G.state === 'over') updatePet(dt);
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   GFX.renderer.render(GFX.scene, GFX.camera);
@@ -247,6 +278,7 @@ function bindInput() {
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
   on('shopBtn', act(openShop));
+  on('petsBtn', act(openPetsShop));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
@@ -264,11 +296,12 @@ function init() {
   player.node = ENT.buildMel(SK.selectedId()); GFX.scene.add(player.node.root);
   granny.node = ENT.buildGranny(); GFX.scene.add(granny.node.root);
   deskScene = ENT.buildClassroom(); GFX.scene.add(deskScene.group);
+  applyPlayerPet(PT.selectedId());
   ENT.initParticles();
   const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
   if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
   if (U.UI.hint) U.UI.hint.innerHTML = '<span>⬅️➡️ полосы</span><span>⬆️ прыжок</span><span>⬇️ подкат</span>';
-  SHOP.initShop({ setPreviewSkin: applyPlayerSkin, getPlayerNode: () => player.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
+  SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));

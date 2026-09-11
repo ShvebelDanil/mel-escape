@@ -19,7 +19,8 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'flash', 'yell', 'bottleNum', 'score', 'hint', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
   'overBest', 'newRecord', 'musicBtn', 'soundBtn', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
-  'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn'];
+  'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
+  'shopTabSkins', 'shopTabPets'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -42,14 +43,15 @@ export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', music: 1, sound: 1 };
-const cleanSkinList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', music: 1, sound: 1 };
+const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 export function readLocalSave() {
   try {
     const s = JSON.parse(localStorage.getItem('melEscapeSave') || 'null');
     if (s) {
       save.best = s.best | 0; save.bottles = s.bottles | 0; save.music = s.music !== 0 ? 1 : 0; save.sound = s.sound !== 0 ? 1 : 0;
-      save.currency = s.currency | 0; save.ownedSkins = cleanSkinList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
+      save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
+      save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
     }
   } catch (e) {}
 }
@@ -61,7 +63,7 @@ export function syncToggleUI() {
 }
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin }, false)).catch(() => {});
+  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet }, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -92,7 +94,7 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         if (typeof d.music === 'number') save.music = d.music ? 1 : 0;
@@ -100,8 +102,10 @@ export const Sdk = {
       }
       if (d) {
         if (typeof d.currency === 'number') save.currency = Math.max(save.currency, d.currency | 0);
-        for (const id of cleanSkinList(d.ownedSkins)) if (save.ownedSkins.indexOf(id) < 0) save.ownedSkins.push(id);
+        for (const id of cleanStrList(d.ownedSkins)) if (save.ownedSkins.indexOf(id) < 0) save.ownedSkins.push(id);
         if (typeof d.selectedSkin === 'string' && d.selectedSkin) save.selectedSkin = d.selectedSkin;
+        for (const id of cleanStrList(d.ownedPets)) if (save.ownedPets.indexOf(id) < 0) save.ownedPets.push(id);
+        if (typeof d.selectedPet === 'string' && d.selectedPet) save.selectedPet = d.selectedPet;
       }
       return true;
     }).catch(() => false);
