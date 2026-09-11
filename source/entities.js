@@ -1,6 +1,6 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
-import { createMelVisual } from '../assets/models/mel-visual.js';
+import { createMelVisual } from '../assets/models/mel6-visual.js';
 import { createGrannyVisual } from '../assets/models/granny-visual.js';
 
 export function buildMel() {
@@ -113,3 +113,7 @@ export function updateParticles(dt) {
     const k = p.life / 0.45; p.mesh.material.opacity = k; p.mesh.scale.setScalar(0.6 + (1 - k) * 1.4); p.mesh.quaternion.copy(GFX.camera.quaternion);
   }
 }
+
+
+
+
