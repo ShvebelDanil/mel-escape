@@ -60,36 +60,112 @@ function buildCartMesh() {
   GFX.put(g, GFX.cyl(0.15, 0.12, 0.26, 8, '#e0b83e'), 0.2, 0.37, 0.1); GFX.put(g, GFX.box(0.34, 0.24, 0.34, '#3b3f47'), -0.24, 0.36, -0.1); return g;
 }
 function buildObstacle(type) {
-  const g = new THREE.Group(), def = OB_DEFS[type];
+  const g = new THREE.Group();
   if (type === 'desk') g.add(buildDeskMesh());
   else if (type === 'tower') { g.add(buildDeskMesh()); GFX.put(g, buildChairMesh(), 0.3, U.DESK_TOP_Y, 0.25); }
   else if (type === 'banner') { for (const px of [-0.95, 0.95]) { GFX.put(g, GFX.cyl(0.055, 0.055, 2.95, 8, '#5a636e'), px, 1.47, 0); GFX.put(g, GFX.box(0.42, 0.07, 0.8, '#5a636e'), px, 0.035, 0); } GFX.put(g, new THREE.Mesh(GFX.GBox(2.0, 1.1, 0.09), GFX.MT(U.pick(GFX.bannerTexes))), 0, 1.85, 0); GFX.put(g, GFX.box(2.1, 0.06, 0.06, '#3f4750'), 0, 2.43, 0); }
-  else if (type === 'locker') { GFX.put(g, new THREE.Mesh(GFX.GBox(1.5, 2.7, 0.75), GFX.LOCKER_MATS_BACK), 0, 1.35, 0); GFX.put(g, GFX.box(1.56, 0.12, 0.8, '#4d5762'), 0, 0.06, 0); }
-  else if (type === 'shelf') { GFX.put(g, new THREE.Mesh(GFX.GBox(1.5, 2.4, 0.7), GFX.SHELF_MATS), 0, 1.2, 0); GFX.put(g, GFX.box(1.56, 0.1, 0.76, '#4e3521'), 0, 0.05, 0); GFX.put(g, GFX.box(1.56, 0.06, 0.76, '#4e3521'), 0, 2.43, 0); }
+  else if (type === 'locker') { GFX.put(g, GFX.panel(1.5, 2.7, 0.75, '#6d7986', GFX.lockerTex, [-1]), 0, 1.35, 0); GFX.put(g, GFX.box(1.52, 0.03, 0.77, '#8a97a5'), 0, 2.695, 0); GFX.put(g, GFX.box(1.56, 0.12, 0.8, '#4d5762'), 0, 0.06, 0); }
+  else if (type === 'shelf') { GFX.put(g, GFX.panel(1.5, 2.4, 0.7, '#6b4a2e', GFX.shelfTex, [1, -1]), 0, 1.2, 0); GFX.put(g, GFX.box(1.56, 0.1, 0.76, '#4e3521'), 0, 0.05, 0); GFX.put(g, GFX.box(1.56, 0.06, 0.76, '#4e3521'), 0, 2.43, 0); }
   else if (type === 'cart') g.add(buildCartMesh());
-  else if (type === 'sign') { GFX.put(g, new THREE.Mesh(GFX.GBox(0.56, 0.84, 0.04), GFX.SIGN_MATS_BACK), 0, 0.4, -0.13).rotation.x = 0.3; GFX.put(g, new THREE.Mesh(GFX.GBox(0.56, 0.84, 0.04), GFX.SIGN_MATS_FRONT), 0, 0.4, 0.13).rotation.x = -0.3; GFX.put(g, GFX.box(0.58, 0.05, 0.08, '#c9a020'), 0, 0.8, 0); }
+  else if (type === 'sign') { GFX.put(g, GFX.panel(0.56, 0.84, 0.04, '#e9bb1c', GFX.signTex, [-1]), 0, 0.4, -0.13).rotation.x = 0.3; GFX.put(g, GFX.panel(0.56, 0.84, 0.04, '#e9bb1c', GFX.signTex, [1]), 0, 0.4, 0.13).rotation.x = -0.3; GFX.put(g, GFX.box(0.58, 0.05, 0.08, '#c9a020'), 0, 0.8, 0); }
   else if (type === 'door') { for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.12, 2.5, 0.16, '#6d4c2f'), s * 0.66, 1.25, 0); GFX.put(g, GFX.box(0.16, 0.08, 0.9, '#4e3521'), s * 0.66, 0.04, 0); for (const dz of [-1, 1]) GFX.put(g, GFX.box(0.06, 0.58, 0.06, '#4e3521'), s * 0.66, 0.29, dz * 0.175).rotation.x = dz * 0.65; } GFX.put(g, GFX.box(1.48, 0.14, 0.16, '#6d4c2f'), 0, 2.43, 0); GFX.put(g, GFX.box(1.2, 2.32, 0.07, '#8a5a33'), 0, 1.2, 0); GFX.put(g, GFX.box(0.46, 0.62, 0.03, '#cfe6ee'), 0, 1.85, -0.045); GFX.put(g, GFX.box(0.5, 0.14, 0.02, '#e8e2c8'), 0, 1.42, -0.045); GFX.put(g, GFX.sph(0.06, 8, 8, '#e0b83e'), 0.42, 1.15, -0.08); }
-  GFX.shadowDisc(g, def.hw + 0.25, GFX.SHADOW_MAT_OBS); return GFX.finalizeStatic(g);
+  GFX.finalizeStatic(g); g.matrixAutoUpdate = false; return g; // матрица группы пересчитывается только при спавне, см. spawnObstacle
 }
+
+// Тени препятствий: раньше у каждого препятствия был свой прозрачный диск — до 20 отдельных
+// draw call за кадр. Теперь это один InstancedMesh, а матрицы пишутся только при спавне и
+// освобождении (препятствия не двигаются относительно мира, так что в кадре работы ноль).
+const SHADOW_MAX = 64;
+let obShadows = null;
+const shadowOwner = [];
+let _shm, _shq, _shv, _shs;
+export function initObstacleShadows() {
+  _shm = new THREE.Matrix4(); _shq = new THREE.Quaternion(); _shv = new THREE.Vector3(); _shs = new THREE.Vector3();
+  _shq.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+  obShadows = new THREE.InstancedMesh(GFX.GCircle(1), GFX.SHADOW_MAT_OBS, SHADOW_MAX);
+  obShadows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  obShadows.count = 0; obShadows.frustumCulled = false; obShadows.matrixAutoUpdate = false; obShadows.updateMatrix();
+  GFX.scene.add(obShadows);
+}
+function shadowWrite(i, x, z, r) {
+  _shv.set(x, 0.02, z); _shs.setScalar(r); _shm.compose(_shv, _shq, _shs);
+  obShadows.setMatrixAt(i, _shm); obShadows.instanceMatrix.needsUpdate = true;
+}
+function shadowAdd(x, z, r) { if (!obShadows || obShadows.count >= SHADOW_MAX) return -1; const i = obShadows.count++; shadowOwner[i] = null; shadowWrite(i, x, z, r); return i; }
+function shadowRemove(o) {
+  const i = o.shadowIdx; if (i < 0 || !obShadows) return;
+  const last = obShadows.count - 1;
+  if (i !== last) { obShadows.getMatrixAt(last, _shm); obShadows.setMatrixAt(i, _shm); obShadows.instanceMatrix.needsUpdate = true; const ow = shadowOwner[last]; if (ow) ow.shadowIdx = i; shadowOwner[i] = ow; }
+  shadowOwner[last] = null; obShadows.count = last; o.shadowIdx = -1;
+}
+
 export const obstaclePool = { desk: [], tower: [], banner: [], locker: [], door: [], shelf: [], cart: [], sign: [] };
 export const activeObstacles = [];
+const obDescPool = []; // описатели препятствий тоже переиспользуются (правило нулевых аллокаций)
 export function spawnObstacle(type, x, z, rot) {
   let g = obstaclePool[type].pop(); if (!g) g = buildObstacle(type);
   g.position.set(x, 0, z);
   if (rot !== undefined) g.rotation.y = rot; else if (type === 'desk' || type === 'tower') g.rotation.y = Math.random() < 0.5 ? Math.PI : 0; else g.rotation.y = 0;
-  GFX.scene.add(g); activeObstacles.push(Object.assign({ t: type, x, z, group: g, stumbled: false }, OB_DEFS[type]));
+  g.updateMatrix(); GFX.scene.add(g);
+  const def = OB_DEFS[type], o = obDescPool.pop() || {};
+  o.t = type; o.x = x; o.z = z; o.group = g; o.stumbled = false; o.petHandled = false;
+  o.hw = def.hw; o.hz = def.hz; o.y0 = def.y0; o.y1 = def.y1; o.platform = def.platform;
+  o.shadowIdx = shadowAdd(x, z, def.hw + 0.25);
+  if (o.shadowIdx >= 0) shadowOwner[o.shadowIdx] = o;
+  activeObstacles.push(o);
 }
-export function releaseObstacle(i) { const o = activeObstacles[i]; GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group); activeObstacles.splice(i, 1); }
+export function releaseObstacle(i) {
+  const o = activeObstacles[i]; shadowRemove(o); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
+  o.group = null; activeObstacles.splice(i, 1); obDescPool.push(o);
+}
 export function clearObstacles(fromZ, toZ) { for (let i = activeObstacles.length - 1; i >= 0; i--) { const o = activeObstacles[i]; if (o.z > fromZ && o.z < toZ) releaseObstacle(i); } }
 
-export const coinPool = [], activeCoins = [];
-let coinMat = null;
-export function spawnCoin(x, y, z) {
-  let s = coinPool.pop();
-  if (!s) { if (!coinMat) { coinMat = new THREE.SpriteMaterial({ map: GFX.texBottle, transparent: true, alphaTest: 0.15 }); if ('fog' in coinMat) coinMat.fog = true; } s = new THREE.Sprite(coinMat); s.scale.set(0.62, 1.4, 1); }
-  s.position.set(x, y, z); s.userData.phase = Math.random() * Math.PI * 2; s.visible = true; GFX.scene.add(s); activeCoins.push({ sprite: s, x, y, z });
+// Бутылки: раньше каждая была THREE.Sprite, то есть отдельный draw call (в забеге до 20 за кадр).
+// Теперь все они — один меш из квадов, развёрнутых по базису камеры ровно так же, как это делает
+// спрайт, поэтому вид не меняется. Буферы созданы один раз, в кадре только перезапись координат.
+const COIN_MAX = 64, COIN_HW = 0.31, COIN_HH = 0.7; // наблюдаемый максимум в забеге ~20, запас трёхкратный
+export const activeCoins = [];
+const coinDescPool = [];
+let coinMesh = null, coinPos = null;
+export function initCoins() {
+  const geo = new THREE.BufferGeometry();
+  coinPos = new Float32Array(COIN_MAX * 12);
+  const uv = new Float32Array(COIN_MAX * 8), idx = new Uint16Array(COIN_MAX * 6);
+  for (let i = 0; i < COIN_MAX; i++) {
+    const u = i * 8; uv[u] = 0; uv[u + 1] = 1; uv[u + 2] = 1; uv[u + 3] = 1; uv[u + 4] = 1; uv[u + 5] = 0; uv[u + 6] = 0; uv[u + 7] = 0;
+    const b = i * 4, o = i * 6; idx[o] = b; idx[o + 1] = b + 3; idx[o + 2] = b + 2; idx[o + 3] = b; idx[o + 4] = b + 2; idx[o + 5] = b + 1;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(coinPos, 3).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.setDrawRange(0, 0);
+  coinMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: GFX.texBottle, transparent: true, alphaTest: 0.15 }));
+  coinMesh.frustumCulled = false; coinMesh.matrixAutoUpdate = false; coinMesh.updateMatrix(); coinMesh.renderOrder = 1;
+  GFX.scene.add(coinMesh);
 }
-export function releaseCoin(i) { const c = activeCoins[i]; GFX.scene.remove(c.sprite); coinPool.push(c.sprite); activeCoins.splice(i, 1); }
+export function spawnCoin(x, y, z) {
+  if (activeCoins.length >= COIN_MAX) return;
+  const c = coinDescPool.pop() || {};
+  c.x = x; c.y = y; c.z = z; c.phase = Math.random() * Math.PI * 2;
+  activeCoins.push(c);
+}
+export function releaseCoin(i) { coinDescPool.push(activeCoins[i]); activeCoins.splice(i, 1); }
+export function updateCoins(bobT) {
+  if (!coinMesh) return;
+  const n = activeCoins.length, geo = coinMesh.geometry;
+  geo.setDrawRange(0, n * 6); if (!n) return;
+  GFX.camera.updateMatrixWorld(); // камера уже повёрнута в этом кадре — берём свежий базис, а не прошлый
+  const e = GFX.camera.matrixWorld.elements; // правый и верхний векторы камеры — ими спрайт и разворачивается к экрану
+  const rx = e[0] * COIN_HW, ry = e[1] * COIN_HW, rz = e[2] * COIN_HW;
+  const ux = e[4] * COIN_HH, uy = e[5] * COIN_HH, uz = e[6] * COIN_HH;
+  for (let i = 0; i < n; i++) {
+    const c = activeCoins[i], k = i * 12, cy = c.y + Math.sin(bobT + c.phase) * 0.09;
+    coinPos[k] = c.x - rx + ux; coinPos[k + 1] = cy - ry + uy; coinPos[k + 2] = c.z - rz + uz;
+    coinPos[k + 3] = c.x + rx + ux; coinPos[k + 4] = cy + ry + uy; coinPos[k + 5] = c.z + rz + uz;
+    coinPos[k + 6] = c.x + rx - ux; coinPos[k + 7] = cy + ry - uy; coinPos[k + 8] = c.z + rz - uz;
+    coinPos[k + 9] = c.x - rx - ux; coinPos[k + 10] = cy - ry - uy; coinPos[k + 11] = c.z - rz - uz;
+  }
+  geo.attributes.position.needsUpdate = true;
+}
 
 export const particles = [];
 export function initParticles() {

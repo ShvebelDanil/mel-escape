@@ -184,12 +184,12 @@ function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.ro
 function resetRun() {
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
   for (let i = ENT.activeCoins.length - 1; i >= 0; i--) ENT.releaseCoin(i);
-  segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
+  segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
   player.lane = 1; player.x = 0; player.y = 0; player.vy = 0; player.z = 0; player.groundY = 0; player.grounded = true; player.rolling = 0; player.invuln = 0; player.squash = 0;
   resetPose(); player.node.inner.scale.set(1, 1, 1); player.node.inner.position.y = -0.92;
   G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.nextZ = 42; G.reviveUsed = false; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
-  G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on');
+  G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); GFX.resetResolution();
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
 }
@@ -236,7 +236,8 @@ function updateIntro(dt) {
   } else { gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -1.25, 4, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -1.45, 4, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, 0.42, 3, dt); gn.inner.position.y = -0.96; }
   if (t >= 3.0) beginRun();
 }
-function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
+let pausedW = -1, pausedH = -1; // размер холста на последнем отрисованном кадре паузы (см. loop)
+function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; pausedW = -1; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
 function resumeRun() { if (G.state !== 'paused') return; G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
 function showOverScreen() {
   G.overShown = true; const m = Math.floor(G.dist);
@@ -250,10 +251,14 @@ function revive() {
   pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0;
 }
 
-let lastScore = -1;
+let lastScore = -1, scoreNum = null;
 function updateScoreHud(force) {
   const m = Math.floor(G.dist);
-  if (m !== lastScore || force) { lastScore = m; if (U.UI.score) U.UI.score.innerHTML = m + ' <small>м</small>'; }
+  if (m === lastScore && !force) return;
+  lastScore = m; if (!U.UI.score) return;
+  // раньше здесь был innerHTML — браузер пересобирал разметку ~20 раз в секунду; теперь меняется только текст
+  if (!scoreNum) { U.UI.score.innerHTML = '<span></span> <small>м</small>'; scoreNum = U.UI.score.firstChild; }
+  scoreNum.textContent = m;
 }
 
 let camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), smPos = new THREE.Vector3(), smLook = new THREE.Vector3(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpD = new THREE.Vector3();
@@ -334,7 +339,13 @@ let lastT = 0;
 function loop(t) {
   requestAnimationFrame(loop); const dt = U.clamp((t - lastT) / 1000, 0, 0.05); lastT = t;
   if (G.state === 'loading') return;
-  if (G.state === 'paused') { GFX.renderer.render(GFX.scene, GFX.camera); return; }
+  // На паузе кадр не меняется, а перерисовка каждые 16 мс греет телефон и садит батарею.
+  // Рисуем один раз и потом только если поменялся размер холста (поворот экрана, адресная строка).
+  if (G.state === 'paused') {
+    const cv = GFX.renderer.domElement;
+    if (pausedW !== cv.width || pausedH !== cv.height) { pausedW = cv.width; pausedH = cv.height; GFX.renderer.render(GFX.scene, GFX.camera); }
+    return;
+  }
   if (G.state === 'shop') { SHOP.update(dt); GFX.renderer.render(GFX.scene, GFX.camera); return; }
   if (G.state === 'run') {
     G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
@@ -350,8 +361,7 @@ function loop(t) {
       if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && Math.abs(pcy - c.y) < 1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();
-    for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; GFX.randomizeSegmentDecor(seg); } }
-    const bobT = t / 300; for (const c of ENT.activeCoins) { c.sprite.position.y = c.y + Math.sin(bobT + c.sprite.userData.phase) * 0.09; }
+    for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg); } }
     if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) { G.combo = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); } }
     G.camBlend = Math.min(1, G.camBlend + dt * 1.6);
   } else if (G.state === 'over') {
@@ -363,7 +373,9 @@ function loop(t) {
   if (G.state === 'run' || G.state === 'over') updatePet(dt); else if (G.state === 'menu') animatePetMenuIdle(dt);
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
+  ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
   GFX.renderer.render(GFX.scene, GFX.camera);
+  if (G.state === 'run') GFX.tuneResolution(dt); // мерим только забег: в меню первые кадры дороже из-за компиляции шейдеров
 }
 
 function bindInput() {
@@ -388,7 +400,12 @@ function bindInput() {
     gameEl.addEventListener('pointercancel', (e) => { if (ts && e.pointerId === ts.id) ts = null; });
   }
   window.addEventListener('contextmenu', e => e.preventDefault());
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); } });
+  // Уходя со вкладки, глушим звук в ЛЮБОМ состоянии: раньше в меню/на экране смерти музыка
+  // продолжала играть в фоне (Яндекс.Игры это не пропускают).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); U.Sound.pauseAll(); }
+    else if (G.state !== 'paused') U.Sound.resumeAll();
+  });
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
@@ -413,7 +430,7 @@ function init() {
   granny.node = ENT.buildGranny(); GFX.scene.add(granny.node.root);
   deskScene = ENT.buildClassroom(); GFX.scene.add(deskScene.group);
   applyPlayerPet(PT.selectedId());
-  ENT.initParticles();
+  ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
   if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });

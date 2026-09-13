@@ -23,6 +23,16 @@ export function limb(parent, x, y, parts) {
   parent.add(g); return g;
 }
 
+// Бокс с текстурной накладкой на грани по Z (sides: [1] — лицом на +Z, [-1] — на -Z, [1,-1] — на обе).
+// Раньше такие детали (шкафчики, стеллаж, знак, дневник) делались ОДНИМ боксом с массивом из 6
+// материалов, а three.js рисует такой бокс 6 раз — по группе на каждую грань, даже если материалы
+// повторяются. Теперь это одноцветный бокс + плоские накладки, и bakeStatic сливает всё в 2 вызова.
+export function panel(w, h, d, color, tex, sides) {
+  const g = new THREE.Group(); put(g, box(w, h, d, color), 0, 0, 0);
+  for (const s of sides) { const p = tplane(w, h, tex); if (s < 0) p.rotation.y = Math.PI; put(g, p, 0, 0, s * (d / 2 + 0.006)); }
+  return g;
+}
+
 export let SHADOW_MAT_CHAR, SHADOW_MAT_OBS;
 export function shadowDisc(parent, r, mat) { const s = put(parent, new THREE.Mesh(GCircle(r), mat), 0, 0.02, 0); s.rotation.x = -Math.PI / 2; return s; }
 export function canvasTex(w, h, fn, repeat, aniso) {
@@ -37,36 +47,61 @@ export function initBakeHelpers() {
   _bm = new THREE.Matrix4(); _bn = new THREE.Matrix3(); _bv = new THREE.Vector3(); _binv = new THREE.Matrix4();
   BAKE_MATS = { L: new THREE.MeshLambertMaterial({ vertexColors: true }), B: new THREE.MeshBasicMaterial({ vertexColors: true }) };
 }
+// Корзины склейки: 'L'/'B' — одноцветные детали (цвет уезжает в вершинные цвета и материал
+// становится общим на всю группу), а для деталей с текстурой ключ — сам материал: такие
+// склеиваются только между собой и сохраняют UV. Прозрачные, вершинно-окрашенные и детали
+// с массивом материалов пропускаются. Узлы с userData.noBake не трогаются вообще (и вся их ветка).
+function bakeCollect(o, buckets) {
+  if (o.userData.noBake) return;
+  const m = o.material, g = o.geometry;
+  if (o.isMesh && m && !Array.isArray(m) && !m.transparent && !m.vertexColors && g && g.attributes.position && g.attributes.normal) {
+    let key = null;
+    if (m.map) { if (g.attributes.uv) key = m; }           // индекс не обязателен: у ExtrudeGeometry (rounded() в моделях) его нет
+    else if (m.isMeshLambertMaterial) key = 'L';
+    else if (m.isMeshBasicMaterial) key = 'B';
+    if (key !== null) { const list = buckets.get(key); if (list) list.push(o); else buckets.set(key, [o]); }
+  }
+  for (const c of o.children) bakeCollect(c, buckets);
+}
 export function bakeStatic(group) {
-  group.updateMatrixWorld(true); _binv.copy(group.matrixWorld).invert(); const buckets = { L: [], B: [] };
-  group.traverse(o => {
-    if (!o.isMesh) return; const m = o.material, g = o.geometry;
-    if (!m || Array.isArray(m) || m.map || m.transparent || m.vertexColors) return;
-    if (!g || !g.attributes.position || !g.attributes.normal) return; // индекс не обязателен: ExtrudeGeometry (rounded() в моделях) его не имеет
-    if (m.isMeshLambertMaterial) buckets.L.push(o); else if (m.isMeshBasicMaterial) buckets.B.push(o);
-  });
-  for (const key in buckets) {
-    const list = buckets[key]; if (list.length < 2) continue;
+  group.updateMatrixWorld(true); _binv.copy(group.matrixWorld).invert();
+  const buckets = new Map();
+  for (const c of group.children) bakeCollect(c, buckets);
+  for (const [key, list] of buckets) {
+    if (list.length < 2) continue;
+    const textured = typeof key !== 'string';
     let vc = 0, ic = 0;
     for (const o of list) { const g = o.geometry; vc += g.attributes.position.count; ic += g.index ? g.index.count : g.attributes.position.count; }
-    const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3), col = new Float32Array(vc * 3);
+    const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3);
+    const col = textured ? null : new Float32Array(vc * 3), uvs = textured ? new Float32Array(vc * 2) : null;
     const idx = vc > 65535 ? new Uint32Array(ic) : new Uint16Array(ic); let vo = 0, io = 0;
     for (const o of list) {
-      const g = o.geometry, p = g.attributes.position, n = g.attributes.normal, ind = g.index, c = o.material.color;
+      const g = o.geometry, p = g.attributes.position, n = g.attributes.normal, ind = g.index;
+      const c = textured ? null : o.material.color, tu = textured ? g.attributes.uv : null;
       _bm.multiplyMatrices(_binv, o.matrixWorld); _bn.getNormalMatrix(_bm);
       for (let i = 0; i < p.count; i++) {
         const k = (vo + i) * 3; _bv.fromBufferAttribute(p, i).applyMatrix4(_bm); pos[k] = _bv.x; pos[k + 1] = _bv.y; pos[k + 2] = _bv.z;
-        _bv.fromBufferAttribute(n, i).applyMatrix3(_bn).normalize(); nor[k] = _bv.x; nor[k + 1] = _bv.y; nor[k + 2] = _bv.z; col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
+        _bv.fromBufferAttribute(n, i).applyMatrix3(_bn).normalize(); nor[k] = _bv.x; nor[k + 1] = _bv.y; nor[k + 2] = _bv.z;
+        if (textured) { const j = (vo + i) * 2; uvs[j] = tu.getX(i); uvs[j + 1] = tu.getY(i); }
+        else { col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b; }
       }
       const icount = ind ? ind.count : p.count;
       for (let i = 0; i < icount; i++) idx[io + i] = (ind ? ind.getX(i) : i) + vo;
       vo += p.count; io += icount;
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    geo.computeBoundingSphere(); for (const o of list) o.parent.remove(o); group.add(new THREE.Mesh(geo, BAKE_MATS[key]));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    if (textured) geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); else geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeBoundingSphere(); for (const o of list) o.parent.remove(o); group.add(new THREE.Mesh(geo, textured ? key : BAKE_MATS[key]));
   }
   return group;
+}
+// Выбросить опустевшие после склейки группы-обёртки, чтобы не таскать мёртвые узлы при обходе сцены.
+// Только для статики: у персонажей пустая группа может быть «ручкой» анимации (см. bakeCharacter).
+function pruneEmpty(group) {
+  const dead = []; group.traverse(o => { if (o !== group && o.isGroup && !o.children.length) dead.push(o); });
+  for (const o of dead) o.parent.remove(o); return group;
 }
 export function freezeStatic(group) { group.traverse(o => { if (o !== group) { o.matrixAutoUpdate = false; o.updateMatrix(); } }); return group; }
 // Собрать все Object3D, которые модель отдаёт наружу в своей ноде — только они анимируются.
@@ -104,7 +139,7 @@ export function freezeCharacter(node) {
   node.root.traverse(o => { if (!keep.has(o) && o.matrixAutoUpdate) { o.updateMatrix(); o.matrixAutoUpdate = false; } });
   return node;
 }
-export function finalizeStatic(group) { return freezeStatic(bakeStatic(group)); }
+export function finalizeStatic(group) { return freezeStatic(pruneEmpty(bakeStatic(group))); }
 
 function makeBottleFallbackTex() {
   return canvasTex(64, 128, (g) => {
@@ -160,7 +195,6 @@ function makeGrannyFaceTex() {
 }
 
 export let floorTex, wallTex, lockerTex, boardTex, windowTex, shelfTex, signTex, posterTexes = [], bannerTexes = [];
-export let LOCKER_MATS_FRONT, LOCKER_MATS_BACK, SHELF_MATS, SIGN_MATS_FRONT, SIGN_MATS_BACK;
 
 export function buildEnvTextures() {
   texMel = makeMelFaceTex(); texGranny = makeGrannyFaceTex();
@@ -173,14 +207,11 @@ export function buildEnvTextures() {
   signTex = canvasTex(128, 192, (g) => { g.fillStyle = '#f2c320'; g.fillRect(0, 0, 128, 192); g.strokeStyle = '#1a1a1a'; g.lineWidth = 4; g.strokeRect(4, 4, 120, 184); g.fillStyle = '#1a1a1a'; g.font = 'bold 19px Arial'; g.textAlign = 'center'; g.fillText('ОСТОРОЖНО', 64, 38); g.beginPath(); g.arc(64, 70, 10, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 82); g.lineTo(76, 108); g.lineTo(98, 100); g.moveTo(76, 108); g.lineTo(58, 130); g.moveTo(66, 92); g.lineTo(40, 88); g.stroke(); g.font = 'bold 21px Arial'; g.fillText('МОКРЫЙ', 64, 160); g.fillText('ПОЛ', 64, 182); });
   posterTexes = [['#fff6dd', '#c62828', 'ДИКТАНТ', 'ЗАВТРА!'], ['#e3f2fd', '#1565c0', 'ОБЕД', 'В 13:00'], ['#fff1f1', '#6a1b9a', 'ПОБЕГ', 'ЗАПРЕЩЁН'], ['#e8f5e9', '#2e7d32', 'Субботник', 'в 9:00']].map(([bg, fg, l1, l2]) => canvasTex(256, 352, (g) => { g.fillStyle = bg; g.fillRect(0, 0, 256, 352); g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(10, 10, 236, 332); g.fillStyle = fg; g.font = 'bold 42px Arial'; g.textAlign = 'center'; g.fillText(l1, 128, 120); g.fillText(l2, 128, 172); g.fillStyle = '#9e9e9e'; for (let i = 0; i < 5; i++) g.fillRect(50, 210 + i * 22, 156 - (i % 3) * 40, 9); }));
   bannerTexes = [['#e53935', '#ffffff', 'КОНТРОЛЬНАЯ', 'РАБОТА!'], ['#fdd835', '#b71c1c', 'НЕ БЕГАТЬ', 'ПО КОРИДОРАМ'], ['#43a047', '#ffffff', 'ЛИНЕЙКА', 'В 8:00']].map(([bg, fg, l1, l2]) => canvasTex(512, 256, (g) => { g.fillStyle = bg; g.fillRect(0, 0, 512, 256); g.fillStyle = fg; for (let i = -2; i < 8; i++) { g.save(); g.translate(i * 80, 0); g.globalAlpha = 0.12; g.fillRect(0, 0, 40, 256); g.restore(); } g.globalAlpha = 1; g.font = 'bold 52px Arial'; g.textAlign = 'center'; g.fillText(l1, 256, 108); g.font = 'bold 64px Arial'; g.fillText(l2, 256, 190); g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(8, 8, 496, 240); }));
-  LOCKER_MATS_FRONT = [M('#6d7986'), M('#6d7986'), M('#8a97a5'), M('#55606a'), MT(lockerTex), M('#6d7986')]; LOCKER_MATS_BACK = [M('#6d7986'), M('#6d7986'), M('#8a97a5'), M('#55606a'), M('#6d7986'), MT(lockerTex)];
-  SHELF_MATS = [M('#6b4a2e'), M('#6b4a2e'), M('#6b4a2e'), M('#4e3521'), MT(shelfTex), MT(shelfTex)];
-  const Y = M('#e9bb1c'); SIGN_MATS_FRONT = [Y, Y, Y, Y, MT(signTex), Y]; SIGN_MATS_BACK = [Y, Y, Y, Y, Y, MT(signTex)];
 }
 
 function buildDecorUnit(kind) {
   const g = new THREE.Group();
-  if (kind === 'lockers') { put(g, new THREE.Mesh(GBox(3, 2.3, 0.5), LOCKER_MATS_FRONT), 0, 1.15, 0.25); put(g, box(3.1, 0.14, 0.6, '#4d5762'), 0, 0.07, 0.3); }
+  if (kind === 'lockers') { put(g, panel(3, 2.3, 0.5, '#6d7986', lockerTex, [1]), 0, 1.15, 0.25); put(g, box(3.02, 0.03, 0.52, '#8a97a5'), 0, 2.295, 0.25); put(g, box(3.1, 0.14, 0.6, '#4d5762'), 0, 0.07, 0.3); }
   else if (kind === 'door') { for (const jx of [-0.64, 0.64]) put(g, box(0.12, 2.5, 0.22, '#6d4c2f'), jx, 1.25, 0.11); put(g, box(1.4, 0.12, 0.22, '#6d4c2f'), 0, 2.44, 0.11); put(g, box(1.16, 2.38, 0.06, '#8a5a33'), 0, 1.19, 0.16); put(g, box(0.42, 0.62, 0.03, '#cfe6ee'), 0, 1.78, 0.195); put(g, sph(0.05, 8, 8, '#e0b83e'), 0.42, 1.18, 0.21); }
   else if (kind === 'windows') { put(g, box(5.2, 1.86, 0.1, '#e6e1d3'), 0, 3.48, 0.05); put(g, tplane(5.0, 1.62, windowTex), 0, 3.5, 0.105); put(g, box(5.4, 0.1, 0.3, '#d9d3c2'), 0, 2.6, 0.15); put(g, cyl(0.12, 0.09, 0.22, 8, '#b7643a'), 1.7, 2.76, 0.15); put(g, sph(0.17, 8, 6, '#4f8a4b'), 1.7, 2.98, 0.15); }
   else if (kind === 'poster') { put(g, box(1.2, 1.6, 0.05, '#5d4634'), 0, 2.15, 0.025); put(g, tplane(1.05, 1.45, U.pick(posterTexes)), 0, 2.15, 0.055); }
@@ -217,26 +248,53 @@ export function buildSegment(i) {
     const sx = sideKey === 'L' ? -U.WALL_X + 0.01 : U.WALL_X - 0.01, ry = sideKey === 'L' ? Math.PI / 2 : -Math.PI / 2;
     for (const kind of DECOR_KINDS) { const u = put(g, buildDecorUnit(kind), sx, 0, 0); u.rotation.y = ry; u.visible = false; u.matrixAutoUpdate = false; u.updateMatrix(); decor[sideKey].push(u); }
   }
-  g.userData.decor = decor; randomizeSegmentDecor(g, i === 0 ? U.CLASS_Z0 + 3 : undefined); return g;
+  g.userData.decor = decor; randomizeSegmentDecor(g, i === 0 ? U.CLASS_Z0 + 3 : undefined);
+  // Сегмент сдвигается только при переносе вперёд. С matrixAutoUpdate three.js каждый кадр
+  // пересобирал его матрицу и, как следствие, ПРИНУДИТЕЛЬНО все матрицы внутри (декор, склейки).
+  // Теперь матрица считается вручную в момент сдвига (см. seg.updateMatrix() в main.js).
+  g.matrixAutoUpdate = false; g.updateMatrix(); return g;
 }
 
+// Дневник: обложка + страницы + текстурная крышка. Боксом с массивом из 6 материалов он стоил
+// 6 draw call и висел прямо в руке игрока, то есть в кадре постоянно; склеенный — 2.
 export function buildDiaryMesh() {
-  if (!buildDiaryMesh.tex) {
-    buildDiaryMesh.tex = canvasTex(128, 128, (g) => { g.fillStyle = '#1d5c3f'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d9b64a'; g.lineWidth = 6; g.strokeRect(8, 8, 112, 112); g.fillStyle = '#d9b64a'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.fillText('ДНЕВНИК', 64, 58); g.font = 'bold 18px Arial'; g.fillText('МЭЛА', 64, 86); });
-    buildDiaryMesh.mats = [M('#14523a'), M('#14523a'), M('#14523a'), M('#f4f0dc'), MT(buildDiaryMesh.tex), M('#14523a')];
-  }
-  return new THREE.Mesh(GBox(0.3, 0.07, 0.4), buildDiaryMesh.mats);
+  if (!buildDiaryMesh.tex) buildDiaryMesh.tex = canvasTex(128, 128, (g) => { g.fillStyle = '#1d5c3f'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d9b64a'; g.lineWidth = 6; g.strokeRect(8, 8, 112, 112); g.fillStyle = '#d9b64a'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.fillText('ДНЕВНИК', 64, 58); g.font = 'bold 18px Arial'; g.fillText('МЭЛА', 64, 86); });
+  // Раскладка граней повторяет прежний массив материалов: корпус зелёный, снизу светлые страницы,
+  // текстурная наклейка — на переднем торце (+Z), как и было.
+  const g = panel(0.3, 0.07, 0.4, '#14523a', buildDiaryMesh.tex, [1]);
+  const pages = new THREE.Mesh(GPlane(0.3, 0.4), M('#f4f0dc')); pages.rotation.x = Math.PI / 2; // накладка нулевой толщины — не даёт светлой каймы по бокам
+  put(g, pages, 0, -0.0351, 0);
+  return g;
 }
 export function buildTeacherDesk() {
   const g = new THREE.Group(); put(g, box(2.0, 0.1, 1.0, '#8a5a33'), 0, 1.02, 0); put(g, box(1.4, 0.02, 0.66, '#2e6b46'), 0, 1.08, 0);
   for (const dx of [-0.72, 0.72]) { put(g, box(0.5, 0.92, 0.85, '#7a4e2b'), dx, 0.48, 0); put(g, box(0.34, 0.05, 0.05, '#e0b83e'), dx, 0.62, 0.45); put(g, box(0.34, 0.05, 0.05, '#e0b83e'), dx, 0.34, 0.45); }
   put(g, box(0.42, 0.05, 0.3, '#a02020'), -0.34, 1.1, 0.08).rotation.y = 0.3;
-  const diary = put(g, buildDiaryMesh(), 0.34, 1.13, 0.02); diary.rotation.set(-Math.PI / 2, 0, 0.2); return { group: g, diary };
+  // noBake: дневник на столе включается/выключается по ходу интро, поэтому его нельзя
+  // слить с общей геометрией класса — иначе он останется видимым навсегда.
+  const diary = put(g, buildDiaryMesh(), 0.34, 1.13, 0.02); diary.rotation.set(-Math.PI / 2, 0, 0.2); diary.userData.noBake = true; return { group: g, diary };
 }
 
+// Динамическое разрешение. На слабых телефонах кадр не влезает в бюджет из-за числа пикселей,
+// а не из-за логики, поэтому при устойчивой просадке плотность пикселей понижается ступенькой.
+// Понижение односторонее в пределах забега (сбрасывается в resetResolution при новом старте) —
+// так нет качелей «то резко, то мутно». На нормальном железе не срабатывает никогда.
+const PR_STEPS = [1, 0.85, 0.72];
+let prBase = 1, prIdx = 0, prAcc = 0, prFrames = 0;
+export function tuneResolution(dt) {
+  if (prIdx >= PR_STEPS.length - 1) return;
+  prAcc += dt; prFrames++;
+  if (prAcc < 1.5) return;
+  const avgMs = prAcc / prFrames * 1000; prAcc = 0; prFrames = 0;
+  if (avgMs > 24) { prIdx++; renderer.setPixelRatio(prBase * PR_STEPS[prIdx]); } // ~меньше 42 FPS полторы секунды подряд
+}
+export function resetResolution() { prAcc = 0; prFrames = 0; }
+
 export function initGraphics(container) {
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, U.IS_MOBILE ? 1.5 : 2));
+  // stencil не используется: без буфера трафарета кадровый буфер меньше — на мобильных это чистая экономия полосы
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', stencil: false });
+  prBase = Math.min(window.devicePixelRatio || 1, U.IS_MOBILE ? 1.5 : 2);
+  renderer.setPixelRatio(prBase);
   renderer.outputEncoding = THREE.sRGBEncoding; renderer.setClearColor(0x9fb2c0);
   container.appendChild(renderer.domElement);
   maxAniso = Math.min(4, renderer.capabilities.getMaxAnisotropy() || 1);
@@ -248,8 +306,15 @@ export function initGraphics(container) {
   scene.add(new THREE.HemisphereLight(0xffffff, 0x77808c, 0.95));
   const dir = new THREE.DirectionalLight(0xfff0d6, 0.65); dir.position.set(3, 10, 4); scene.add(dir);
   const dir2 = new THREE.DirectionalLight(0xd6e4ff, 0.3); dir2.position.set(-4, 6, -6); scene.add(dir2);
-  window.addEventListener('resize', () => {
-    const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
-  });
-  renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  // На телефонах resize сыплется пачками при показе/скрытии адресной строки. Без сверки размеров
+  // каждый такой шум пересоздавал кадровые буферы — это заметные рывки на ходу.
+  let lastW = 0, lastH = 0;
+  const applySize = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    if (w === lastW && h === lastH) return;
+    lastW = w; lastH = h; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', applySize);
+  window.addEventListener('orientationchange', applySize);
+  applySize();
 }
