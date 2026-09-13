@@ -8,7 +8,7 @@ import * as SHOP from './shop.js';
 
 const COMBO_WINDOW = 1.3;
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
-export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spin: 0, spinDir: 0, spinT: U.ROLL_TIME };
+export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spinDir: 0, spinT: 0, spinDur: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0 };
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
@@ -23,7 +23,6 @@ const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. вы
 const TAU = Math.PI * 2;
 const FLIP_TIME = PET_JUMP_T * 0.78; // оборот заметно короче полёта — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
-const SPIN_SHAPE_AVG = 0.62 + 0.88 * 2 / Math.PI; // средняя скорость профиля вращения — нормирует оборот к SPIN_T
 
 function move(dir) {
   if (G.state !== 'run') return;
@@ -35,7 +34,7 @@ function jump() {
   player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0;
   const dir = trickDir();
   if (dir) { startSpin(dir, FLIP_TIME); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
-  else { player.spinDir = 0; player.spin = 0; }
+  else if (player.spinDir) { player.spinDir = 0; player.node.pivot.rotation.x = 0; }
   U.Sound.jump();
 }
 function roll() {
@@ -65,7 +64,7 @@ function trickDir() {
   const r = Math.random();
   return r < FLIP_CHANCE * 0.5 ? 1 : (r < FLIP_CHANCE ? -1 : 0);
 }
-function startSpin(dir, dur) { player.spinDir = dir; player.spin = 0; player.spinT = dur; }
+function startSpin(dir, dur) { player.spinDir = dir; player.spinT = dur; player.spinDur = dur; }
 function nearestLane(x) { let best = 0, bd = 1e9; for (let i = 0; i < 3; i++) { const d = Math.abs(x - U.LANES[i]); if (d < bd) { bd = d; best = i; } } return best; }
 
 const hitsXZ = o => Math.abs(player.z - o.z) <= o.hz + U.HIT_Z && Math.abs(player.x - o.x) <= o.hw + U.HIT_W;
@@ -181,7 +180,7 @@ function showCombo() {
   el.style.transform = `translate(${U.rand(-16, 16).toFixed(0)}px, ${U.rand(-12, 12).toFixed(0)}px)`;
   U.replayCss(el);
 }
-function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spin = 0; player.spinDir = 0; }
+function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spinDir = 0; player.spinT = 0; }
 function resetRun() {
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
   for (let i = ENT.activeCoins.length - 1; i >= 0; i--) ENT.releaseCoin(i);
@@ -280,29 +279,32 @@ function updateCamera(dt) {
 
 // Единый привод вращения корпуса: и перекат, и сальто крутят один и тот же pivot.
 // Поворот по +X наклоняет голову по ходу движения, поэтому вперёд — это «+», назад — «-»
-// (перекат теперь всегда вперёд). Скорость идёт по дуге: медленнее на входе и выходе,
-// быстрее в группировке; сама группировка (k) собирает тело «в клубок».
+// (перекат всегда вперёд). Оборот линейный, ровно за отведённое время — отклик мгновенный,
+// как у исходного переката. Под группировкой (k) продолжает играть обычный цикл бега/полёта,
+// поэтому конечности не «замирают» и нет рывка ни на входе, ни на выходе.
+// Вызывается только когда вращение реально идёт (см. animatePlayer) — в остальных кадрах стоит 0 работы.
 function updateSpin(dt, n) {
-  if (!player.spinDir) {
-    n.pivot.rotation.x = U.damp(n.pivot.rotation.x, 0, 16, dt);
-    n.headG.rotation.x = U.damp(n.headG.rotation.x, 0, 10, dt);
+  // приземлились, а оборот не закончен (например, запрыгнули на парту) — доворачиваем втрое быстрее
+  player.spinT -= (player.grounded && player.rolling <= 0) ? dt * 3 : dt;
+  if (player.spinT <= 0) {
+    player.spinDir = 0; player.spinT = 0;
+    n.pivot.rotation.x = 0; n.headG.rotation.x = 0; n.inner.position.y = -0.92; n.inner.scale.y = 1;
     return;
   }
-  const p = U.clamp(player.spin / TAU, 0, 1);
-  let w = TAU / player.spinT * (0.62 + 0.88 * Math.sin(p * Math.PI)) / SPIN_SHAPE_AVG;
-  // приземлились раньше, чем докрутили сальто (например, на парту) — доворачиваем быстро, а не зависаем в позе
-  if (player.grounded && player.rolling <= 0) w = Math.max(w, (TAU - player.spin) / 0.16);
-  player.spin += w * dt;
-  const k = Math.sin(p * Math.PI);
-  n.pivot.rotation.x = player.spinDir * Math.min(player.spin, TAU);
-  n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.8 * k, 16, dt);
-  n.legR.rotation.x = U.damp(n.legR.rotation.x, -1.5 * k, 16, dt);
-  n.armL.rotation.x = U.damp(n.armL.rotation.x, -1.95 * k, 14, dt);
-  n.armR.rotation.x = U.damp(n.armR.rotation.x, -1.8 * k, 14, dt);
-  n.headG.rotation.x = U.damp(n.headG.rotation.x, (player.spinDir > 0 ? 0.5 : -0.32) * k, 12, dt);
+  const p = 1 - player.spinT / player.spinDur; // 0..1
+  const k = p < 0.5 ? p + p : 2 - p - p; // группировка «в клубок»: 0 → 1 → 0, без Math.sin
+  const w = 1 - k; // вес обычной позы под группировкой
+  n.pivot.rotation.x = player.spinDir * TAU * p;
+  let bl, br, al, ar;
+  if (player.grounded) { player.runPhase += dt * (6 + G.speed * 0.55); const s = Math.sin(player.runPhase); bl = s * 1.05; br = -s * 1.05; al = -s * 0.85; ar = s * 0.85; }
+  else { bl = -1.15; br = 0.45; al = -2.4; ar = -2.4; }
+  n.legL.rotation.x = U.damp(n.legL.rotation.x, bl * w - 1.75 * k, 18, dt);
+  n.legR.rotation.x = U.damp(n.legR.rotation.x, br * w - 1.5 * k, 18, dt);
+  n.armL.rotation.x = U.damp(n.armL.rotation.x, al * w - 1.9 * k, 16, dt);
+  n.armR.rotation.x = U.damp(n.armR.rotation.x, ar * w - 1.75 * k, 16, dt);
+  n.headG.rotation.x = (player.spinDir > 0 ? 0.5 : -0.32) * k;
   n.inner.position.y = -0.92 + 0.13 * k;
   n.inner.scale.y = 1 - 0.1 * k;
-  if (player.spin >= TAU) { player.spinDir = 0; player.spin = 0; n.pivot.rotation.x = 0; n.inner.position.y = -0.92; n.inner.scale.y = 1; }
 }
 function animatePlayer(dt) {
   const n = player.node; n.root.position.set(player.x, player.y, player.z); const faceTarget = (G.state === 'run' || G.state === 'over' || G.state === 'paused') ? 0 : intro.faceY; n.root.rotation.y = U.damp(n.root.rotation.y, faceTarget, 6, dt);
@@ -314,7 +316,7 @@ function animatePlayer(dt) {
   if (running) { player.runPhase += dt * (6 + G.speed * 0.55); const s = Math.sin(player.runPhase); n.legL.rotation.x = s * 1.05; n.legR.rotation.x = -s * 1.05; n.armL.rotation.x = -s * 0.85; n.armR.rotation.x = s * 0.85; n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.07; n.inner.rotation.z = 0; }
   else if (!player.grounded && !spinning) { player.runPhase += dt * 4; n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.15, 10, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.45, 10, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.4, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.4, 8, dt); }
   if (player.rolling > 0) { player.rolling -= dt; if (player.rolling <= 0) player.rolling = 0; }
-  updateSpin(dt, n);
+  if (spinning) updateSpin(dt, n); else n.pivot.rotation.x = 0;
   if (player.squash > 0) { player.squash -= dt; const k = U.clamp(player.squash / 0.18, 0, 1); n.inner.scale.y = 1 - 0.22 * Math.sin(k * Math.PI); if (player.squash <= 0) n.inner.scale.y = 1; }
   if (G.state !== 'over') { const laneX = U.LANES[player.lane]; n.root.rotation.z = U.clamp(-(laneX - player.x) * 0.14, -0.3, 0.3); }
   n.inner.visible = player.invuln > 0 ? (Math.floor(performance.now() / 90) % 2 === 0) : true;

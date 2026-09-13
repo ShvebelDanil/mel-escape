@@ -8,7 +8,7 @@ export function buildMel(skinId) {
 }
 
 export function buildGranny() {
-  return createGrannyVisual(THREE, GFX);
+  return GFX.freezeCharacter(GFX.bakeCharacter(createGrannyVisual(THREE, GFX)));
 }
 
 export function buildClassroom() {

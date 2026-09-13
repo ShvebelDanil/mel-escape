@@ -42,13 +42,13 @@ export function bakeStatic(group) {
   group.traverse(o => {
     if (!o.isMesh) return; const m = o.material, g = o.geometry;
     if (!m || Array.isArray(m) || m.map || m.transparent || m.vertexColors) return;
-    if (!g || !g.index || !g.attributes.position || !g.attributes.normal) return;
+    if (!g || !g.attributes.position || !g.attributes.normal) return; // индекс не обязателен: ExtrudeGeometry (rounded() в моделях) его не имеет
     if (m.isMeshLambertMaterial) buckets.L.push(o); else if (m.isMeshBasicMaterial) buckets.B.push(o);
   });
   for (const key in buckets) {
     const list = buckets[key]; if (list.length < 2) continue;
     let vc = 0, ic = 0;
-    for (const o of list) { vc += o.geometry.attributes.position.count; ic += o.geometry.index.count; }
+    for (const o of list) { const g = o.geometry; vc += g.attributes.position.count; ic += g.index ? g.index.count : g.attributes.position.count; }
     const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3), col = new Float32Array(vc * 3);
     const idx = vc > 65535 ? new Uint32Array(ic) : new Uint16Array(ic); let vo = 0, io = 0;
     for (const o of list) {
@@ -58,8 +58,9 @@ export function bakeStatic(group) {
         const k = (vo + i) * 3; _bv.fromBufferAttribute(p, i).applyMatrix4(_bm); pos[k] = _bv.x; pos[k + 1] = _bv.y; pos[k + 2] = _bv.z;
         _bv.fromBufferAttribute(n, i).applyMatrix3(_bn).normalize(); nor[k] = _bv.x; nor[k + 1] = _bv.y; nor[k + 2] = _bv.z; col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
       }
-      for (let i = 0; i < ind.count; i++) idx[io + i] = ind.getX(i) + vo;
-      vo += p.count; io += ind.count;
+      const icount = ind ? ind.count : p.count;
+      for (let i = 0; i < icount; i++) idx[io + i] = (ind ? ind.getX(i) : i) + vo;
+      vo += p.count; io += icount;
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
@@ -68,6 +69,41 @@ export function bakeStatic(group) {
   return group;
 }
 export function freezeStatic(group) { group.traverse(o => { if (o !== group) { o.matrixAutoUpdate = false; o.updateMatrix(); } }); return group; }
+// Собрать все Object3D, которые модель отдаёт наружу в своей ноде — только они анимируются.
+function exposedNodes(node) {
+  const out = [];
+  for (const key in node) {
+    const v = node[key];
+    if (v && v.isObject3D) out.push(v);
+    else if (Array.isArray(v)) for (const o of v) { if (o && o.isObject3D) out.push(o); }
+  }
+  return out;
+}
+// Слепить неподвижные детали ВНУТРИ каждой подвижной группы персонажа в один меш.
+// Каждая группа печётся отдельно и с временно отцепленными дочерними «ручками», поэтому
+// иерархия анимации остаётся прежней, а число draw call падает в разы (Мэл: 92 → ~18).
+// Детали с текстурой/прозрачностью/массивом материалов bakeStatic пропускает — они остаются как есть.
+export function bakeCharacter(node) {
+  const exposed = exposedNodes(node), exposedSet = new Set(exposed);
+  const depth = o => { let d = 0, p = o.parent; while (p) { d++; p = p.parent; } return d; };
+  const groups = exposed.filter(o => o.isGroup).sort((a, b) => depth(b) - depth(a)); // сначала самые глубокие
+  for (const g of groups) {
+    const moved = g.children.filter(c => exposedSet.has(c));
+    for (const c of moved) g.remove(c);
+    bakeStatic(g);
+    for (const c of moved) g.add(c);
+  }
+  return node;
+}
+// Персонаж анимируется только через «ручки» из своей ноды (root/pivot/inner/legL/armR/headG/shadow/bob/...).
+// Все остальные узлы модели — жёстко приклеенные детали: замораживаем им локальную матрицу, чтобы
+// three.js не пересобирал её каждый кадр (у Мэла это ~85 узлов, у бабки ~50). Идемпотентно.
+export function freezeCharacter(node) {
+  const keep = new Set(exposedNodes(node));
+  node.root.updateMatrixWorld(true);
+  node.root.traverse(o => { if (!keep.has(o) && o.matrixAutoUpdate) { o.updateMatrix(); o.matrixAutoUpdate = false; } });
+  return node;
+}
 export function finalizeStatic(group) { return freezeStatic(bakeStatic(group)); }
 
 function makeBottleFallbackTex() {

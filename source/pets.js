@@ -21,7 +21,7 @@ export function buildPetNode(id) {
   const p = findPet(id);
   if (!p.build) return null;
   let n = nodeCache.get(id);
-  if (!n) { n = p.build(THREE, GFX); nodeCache.set(id, n); }
+  if (!n) { n = GFX.freezeCharacter(GFX.bakeCharacter(p.build(THREE, GFX))); nodeCache.set(id, n); }
   return n;
 }
 

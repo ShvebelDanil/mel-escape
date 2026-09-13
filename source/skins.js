@@ -23,7 +23,7 @@ export const selectedId = () => (isOwned(U.save.selectedSkin) ? U.save.selectedS
 const nodeCache = new Map();
 export function buildSkinNode(id) {
   let n = nodeCache.get(id);
-  if (!n) { n = findSkin(id).build(THREE, GFX); nodeCache.set(id, n); }
+  if (!n) { n = GFX.freezeCharacter(GFX.bakeCharacter(findSkin(id).build(THREE, GFX))); nodeCache.set(id, n); }
   return n;
 }
 
