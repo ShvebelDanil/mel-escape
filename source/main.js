@@ -10,12 +10,16 @@ const COMBO_WINDOW = 1.3;
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0 };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
-export const pet = { node: null, x: 0, z: 0, phase: 0, headingY: 0 };
+export const pet = { node: null, x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0 };
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
 
 let deskScene = null, segments = [];
 const YELLS = ['СТОЙ, ХУЛИГАН!', 'ПОПАЛСЯ!', 'БЕГЛЕЦ!', 'В КЛАСС ВЕРНИСЬ!', 'А Я ПРЕДУПРЕЖДАЛА!', 'ДОМОЙ!'];
-const PET_LAG_Z = 0.75, PET_SIDE_X = 0.5, PET_FOLLOW_X = 6;
+const PET_GAP_Z = 2.4; // безопасный отступ питомца позади игрока по Z — исключает визуальное слияние моделей на любой скорости/манёвре
+const PET_FOLLOW_X = 8; // скорость догона питомца до ряда игрока
+const PET_MENU_X = 0.75, PET_MENU_Z = -0.7; // смещение питомца рядом с Мэлом в сцене главного меню (подобрано визуально: не перекрывает Мэла и кнопки)
+const PET_JUMP_T = 2 * U.JUMP_V / U.GRAVITY; // время полёта прыжка — та же физика, что и у игрока
+const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. высота прыжка питомца
 
 function move(dir) {
   if (G.state !== 'run') return;
@@ -85,22 +89,58 @@ function applyPlayerPet(id) {
   if (next) GFX.scene.add(next.root);
 }
 function syncPetBehindPlayer() {
-  pet.x = player.x + PET_SIDE_X; pet.z = player.z - PET_LAG_Z; pet.phase = 0; pet.headingY = 0;
-  if (pet.node) { pet.node.root.position.set(pet.x, 0, pet.z); pet.node.root.rotation.y = 0; pet.node.root.scale.setScalar(1); pet.node.root.visible = true; }
+  pet.lane = player.lane; pet.x = U.LANES[pet.lane]; pet.z = player.z - PET_GAP_Z; pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0; pet.phase = 0; pet.headingY = 0;
+  if (pet.node) {
+    pet.node.root.position.set(pet.x, 0, pet.z); pet.node.root.rotation.y = 0; pet.node.root.scale.setScalar(1); pet.node.root.visible = true;
+    pet.node.bob.position.y = 0; pet.node.bob.scale.set(1, 1, 1);
+  }
 }
+// Питомец повторяет только ряд игрока (player.lane); препятствия в этом ряду
+// проходит САМ — ищет ближайшее впереди и по его геометрии (OB_DEFS через
+// ENT.activeObstacles, без отдельной таблицы типов) решает прыгнуть или подкатиться,
+// той же физикой, что и игрок (U.JUMP_V/GRAVITY/ROLL_TIME).
 function updatePet(dt) {
   const n = pet.node; if (!n) return;
-  const targetX = player.x + PET_SIDE_X;
+  if (G.state === 'run') pet.lane = player.lane;
+  const targetX = U.LANES[pet.lane];
   pet.x = U.damp(pet.x, targetX, PET_FOLLOW_X, dt);
-  pet.z = player.z - PET_LAG_Z;
+  pet.z = player.z - PET_GAP_Z;
   pet.headingY = U.damp(pet.headingY, U.clamp(-(targetX - pet.x) * 1.6, -0.5, 0.5), 6, dt);
-  n.root.position.set(pet.x, 0, pet.z);
+
+  if (G.state === 'run' && pet.grounded && pet.rolling <= 0) {
+    let target = null, bestZ = Infinity;
+    for (const o of ENT.activeObstacles) {
+      if (o.petHandled || o.z <= pet.z) continue;
+      if (nearestLane(o.x) !== pet.lane) continue;
+      if (o.z < bestZ) { bestZ = o.z; target = o; }
+    }
+    if (target) {
+      const tReach = (target.z - pet.z) / Math.max(1, G.speed);
+      if (target.y1 <= PET_JUMP_APEX + U.PLATFORM_TOL && tReach <= PET_JUMP_T / 2) { pet.vy = U.JUMP_V; pet.grounded = false; target.petHandled = true; }
+      else if (target.y0 >= 0.76 && tReach <= U.ROLL_TIME / 2) { pet.rolling = U.ROLL_TIME; target.petHandled = true; }
+    }
+  }
+  // гравитация/подкат резолвятся всегда (не только в 'run'), чтобы после смерти игрока
+  // питомец корректно долетел/докатился, а не завис в воздухе
+  if (!pet.grounded) { pet.vy -= U.GRAVITY * dt; pet.y += pet.vy * dt; if (pet.y <= 0) { pet.y = 0; pet.vy = 0; pet.grounded = true; } }
+  if (pet.rolling > 0) { pet.rolling -= dt; if (pet.rolling <= 0) pet.rolling = 0; }
+
+  n.root.position.set(pet.x, pet.y, pet.z);
   n.root.rotation.y = pet.headingY;
   pet.phase += dt * (6 + G.speed * 0.5);
-  const bounce = Math.abs(Math.sin(pet.phase)) * 0.09;
+  const bounce = pet.grounded ? Math.abs(Math.sin(pet.phase)) * 0.09 : 0;
   n.bob.position.y = bounce;
   n.tailPivot.rotation.y = Math.sin(pet.phase * 0.6) * 0.3;
-  n.shadow.scale.setScalar(U.clamp(1 - bounce * 1.2, 0.6, 1));
+  const duckK = pet.rolling > 0 ? Math.sin((1 - pet.rolling / U.ROLL_TIME) * Math.PI) : 0;
+  n.bob.scale.y = 1 - duckK * 0.45;
+  n.shadow.position.y = -pet.y + 0.02;
+  n.shadow.scale.setScalar(U.clamp(1 - pet.y * 0.32 - bounce * 1.2, 0.4, 1));
+}
+function animatePetMenuIdle(dt) {
+  const n = pet.node; if (!n) return;
+  pet.phase += dt * 3;
+  n.bob.position.y = Math.sin(pet.phase) * 0.03;
+  n.tailPivot.rotation.y = Math.sin(pet.phase * 0.5) * 0.25;
 }
 function diaryTaken(on) { deskScene.diary.visible = !on; player.node.diary.visible = on; }
 function showCombo() {
@@ -126,7 +166,12 @@ function resetRun() {
 function setupMenuScene() {
   resetRun(); G.state = 'menu'; G.camBlend = 0; camSnap = true; player.z = -4.6; player.node.root.rotation.y = Math.PI;
   diaryTaken(false); granny.zOff = -9.2; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -10.7); granny.node.root.rotation.y = 0;
-  if (pet.node) pet.node.root.visible = false;
+  if (pet.node) {
+    pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0; pet.headingY = 0; pet.lane = player.lane;
+    pet.x = player.x + PET_MENU_X; pet.z = player.z + PET_MENU_Z;
+    pet.node.root.position.set(pet.x, 0, pet.z); pet.node.root.rotation.y = Math.PI; pet.node.root.scale.setScalar(1); pet.node.root.visible = true;
+    pet.node.bob.position.y = 0; pet.node.bob.scale.set(1, 1, 1);
+  }
   Object.assign(intro, { t: 0, grab: false, alert: false, hop: false, turn: false, faceY: Math.PI });
 }
 function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; U.screens('skipIntroBtn'); U.Sound.ensure(); }
@@ -172,6 +217,7 @@ function revive() {
   G.reviveUsed = true; U.screens('hud'); G.state = 'run'; ENT.clearObstacles(player.z - 6, player.z + Math.max(50, G.speed * 2.6));
   player.invuln = 2.8; player.rolling = 0; resetPose(); G.speed = Math.max(U.BASE_SPEED, G.speed * 0.7);
   granny.closeT = 0; granny.catchMode = false; granny.targetZOff = -9.2; G.shake = 0.3; U.Sdk.gameplayStart();
+  pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0;
 }
 
 let lastScore = -1;
@@ -254,7 +300,7 @@ function loop(t) {
     player.node.root.rotation.z = Math.sin(G.overT * 9) * 0.16 * Math.max(0, 1 - G.overT); player.node.inner.rotation.x = U.damp(player.node.inner.rotation.x, -0.35, 4, dt);
     if (G.overT > 1.15 && !G.overShown) showOverScreen();
   } else if (G.state === 'menu') { G.camBlend = Math.max(0, G.camBlend - dt * 1.6); } else if (G.state === 'intro') { updateIntro(dt); }
-  if (G.state === 'run' || G.state === 'over') updatePet(dt);
+  if (G.state === 'run' || G.state === 'over') updatePet(dt); else if (G.state === 'menu') animatePetMenuIdle(dt);
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   GFX.renderer.render(GFX.scene, GFX.camera);
