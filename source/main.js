@@ -8,7 +8,7 @@ import * as SHOP from './shop.js';
 
 const COMBO_WINDOW = 1.3;
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
-export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0 };
+export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spin: 0, spinDir: 0, spinT: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0 };
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
@@ -20,6 +20,10 @@ const PET_FOLLOW_X = 8; // скорость догона питомца до р�
 const PET_MENU_X = 0.75, PET_MENU_Z = -0.7; // смещение питомца рядом с Мэлом в сцене главного меню (подобрано визуально: не перекрывает Мэла и кнопки)
 const PET_JUMP_T = 2 * U.JUMP_V / U.GRAVITY; // время полёта прыжка — та же физика, что и у игрока
 const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. высота прыжка питомца
+const TAU = Math.PI * 2;
+const FLIP_TIME = PET_JUMP_T * 0.78; // оборот заметно короче полёта — успеваем раскрыться и приземлиться в ровную стойку
+const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
+const SPIN_SHAPE_AVG = 0.62 + 0.88 * 2 / Math.PI; // средняя скорость профиля вращения — нормирует оборот к SPIN_T
 
 function move(dir) {
   if (G.state !== 'run') return;
@@ -27,14 +31,41 @@ function move(dir) {
   if (nl !== player.lane) { player.lane = nl; U.Sound.lane(); }
 }
 function jump() {
-  if (G.state !== 'run') return;
-  if (player.grounded) { player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0; player.node.pivot.rotation.x = 0; U.Sound.jump(); }
+  if (G.state !== 'run' || !player.grounded) return;
+  player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0;
+  const dir = trickDir();
+  if (dir) { startSpin(dir, FLIP_TIME); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
+  else { player.spinDir = 0; player.spin = 0; }
+  U.Sound.jump();
 }
 function roll() {
   if (G.state !== 'run') return;
-  if (player.grounded && player.rolling <= 0) { player.rolling = U.ROLL_TIME; U.Sound.roll(); ENT.burst(player.x, player.groundY + 0.1, player.z, '#b8a58c', 4, 1.6); }
-  else if (!player.grounded) { player.vy = Math.min(player.vy, -4); player.rolling = U.ROLL_TIME; }
+  if (player.grounded && player.rolling <= 0) { player.rolling = U.ROLL_TIME; startSpin(1, U.ROLL_TIME); U.Sound.roll(); ENT.burst(player.x, player.groundY + 0.1, player.z, '#b8a58c', 4, 1.6); }
+  else if (!player.grounded) { player.vy = Math.min(player.vy, -4); player.rolling = U.ROLL_TIME; if (!player.spinDir) startSpin(1, U.ROLL_TIME); }
 }
+// Особый прыжок доступен только «осмысленному» прыжку: с платформы (парта, тележка)
+// или через препятствие в своём ряду, до которого игрок реально долетит.
+// Геометрия берётся из уже существующих полей препятствия (y0/y1 из OB_DEFS), отдельной таблицы типов нет.
+function trickJump() {
+  if (player.groundY > 0.01) return true; // спрыгиваем с парты/тележки
+  for (const o of ENT.activeObstacles) {
+    const dz = o.z - player.z;
+    if (dz <= 0 || o.y0 > 0.01) continue; // позади или висит над головой (это подкат, а не перепрыгивание)
+    if (nearestLane(o.x) !== player.lane) continue;
+    const t = dz / Math.max(1, G.speed); // момент, когда игрок поравняется с препятствием
+    if (t > PET_JUMP_T) continue; // за этот прыжок не долетит
+    const h = U.JUMP_V * t - 0.5 * U.GRAVITY * t * t; // высота в этот момент — та же физика, что и в loop()
+    if (h >= o.y1 - U.PLATFORM_TOL) return true; // траектория реально проходит поверх препятствия
+  }
+  return false;
+}
+// 0 — обычный прыжок, 1 — сальто вперёд, -1 — сальто назад.
+function trickDir() {
+  if (!trickJump()) return 0;
+  const r = Math.random();
+  return r < FLIP_CHANCE * 0.5 ? 1 : (r < FLIP_CHANCE ? -1 : 0);
+}
+function startSpin(dir, dur) { player.spinDir = dir; player.spin = 0; player.spinT = dur; }
 function nearestLane(x) { let best = 0, bd = 1e9; for (let i = 0; i < 3; i++) { const d = Math.abs(x - U.LANES[i]); if (d < bd) { bd = d; best = i; } } return best; }
 
 const hitsXZ = o => Math.abs(player.z - o.z) <= o.hz + U.HIT_Z && Math.abs(player.x - o.x) <= o.hw + U.HIT_W;
@@ -150,7 +181,7 @@ function showCombo() {
   el.style.transform = `translate(${U.rand(-16, 16).toFixed(0)}px, ${U.rand(-12, 12).toFixed(0)}px)`;
   U.replayCss(el);
 }
-function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.inner.visible = true; }
+function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spin = 0; player.spinDir = 0; }
 function resetRun() {
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
   for (let i = ENT.activeCoins.length - 1; i >= 0; i--) ENT.releaseCoin(i);
@@ -247,16 +278,43 @@ function updateCamera(dt) {
   const portrait = window.innerHeight > window.innerWidth, fov = (portrait ? 68 : 58) + spN * 6; if (Math.abs(GFX.camera.fov - fov) > 0.3) { GFX.camera.fov = fov; GFX.camera.updateProjectionMatrix(); }
 }
 
+// Единый привод вращения корпуса: и перекат, и сальто крутят один и тот же pivot.
+// Поворот по +X наклоняет голову по ходу движения, поэтому вперёд — это «+», назад — «-»
+// (перекат теперь всегда вперёд). Скорость идёт по дуге: медленнее на входе и выходе,
+// быстрее в группировке; сама группировка (k) собирает тело «в клубок».
+function updateSpin(dt, n) {
+  if (!player.spinDir) {
+    n.pivot.rotation.x = U.damp(n.pivot.rotation.x, 0, 16, dt);
+    n.headG.rotation.x = U.damp(n.headG.rotation.x, 0, 10, dt);
+    return;
+  }
+  const p = U.clamp(player.spin / TAU, 0, 1);
+  let w = TAU / player.spinT * (0.62 + 0.88 * Math.sin(p * Math.PI)) / SPIN_SHAPE_AVG;
+  // приземлились раньше, чем докрутили сальто (например, на парту) — доворачиваем быстро, а не зависаем в позе
+  if (player.grounded && player.rolling <= 0) w = Math.max(w, (TAU - player.spin) / 0.16);
+  player.spin += w * dt;
+  const k = Math.sin(p * Math.PI);
+  n.pivot.rotation.x = player.spinDir * Math.min(player.spin, TAU);
+  n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.8 * k, 16, dt);
+  n.legR.rotation.x = U.damp(n.legR.rotation.x, -1.5 * k, 16, dt);
+  n.armL.rotation.x = U.damp(n.armL.rotation.x, -1.95 * k, 14, dt);
+  n.armR.rotation.x = U.damp(n.armR.rotation.x, -1.8 * k, 14, dt);
+  n.headG.rotation.x = U.damp(n.headG.rotation.x, (player.spinDir > 0 ? 0.5 : -0.32) * k, 12, dt);
+  n.inner.position.y = -0.92 + 0.13 * k;
+  n.inner.scale.y = 1 - 0.1 * k;
+  if (player.spin >= TAU) { player.spinDir = 0; player.spin = 0; n.pivot.rotation.x = 0; n.inner.position.y = -0.92; n.inner.scale.y = 1; }
+}
 function animatePlayer(dt) {
   const n = player.node; n.root.position.set(player.x, player.y, player.z); const faceTarget = (G.state === 'run' || G.state === 'over' || G.state === 'paused') ? 0 : intro.faceY; n.root.rotation.y = U.damp(n.root.rotation.y, faceTarget, 6, dt);
   const h = Math.max(0, player.y - player.groundY); n.shadow.position.y = player.groundY - player.y + 0.02; n.shadow.scale.setScalar(U.clamp(1 - h * 0.32, 0.4, 1));
   if (G.state === 'menu') { n.legL.rotation.x = U.damp(n.legL.rotation.x, -0.06, 8, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.06, 8, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -0.18, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -0.14, 8, dt); n.inner.position.y = -0.92 + Math.sin(performance.now() / 500) * 0.02; n.pivot.rotation.x = 0; return; }
   if (G.state === 'intro') return;
-  const running = G.state === 'run' && player.grounded && player.rolling <= 0;
+  const spinning = player.spinDir !== 0;
+  const running = G.state === 'run' && player.grounded && player.rolling <= 0 && !spinning;
   if (running) { player.runPhase += dt * (6 + G.speed * 0.55); const s = Math.sin(player.runPhase); n.legL.rotation.x = s * 1.05; n.legR.rotation.x = -s * 1.05; n.armL.rotation.x = -s * 0.85; n.armR.rotation.x = s * 0.85; n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.07; n.inner.rotation.z = 0; }
-  else if (!player.grounded) { player.runPhase += dt * 4; n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.15, 10, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.45, 10, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.4, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.4, 8, dt); }
-  if (player.rolling > 0) { player.rolling -= dt; const k = 1 - U.clamp(player.rolling / U.ROLL_TIME, 0, 1); n.pivot.rotation.x = -Math.PI * 2 * k; if (player.rolling <= 0) { player.rolling = 0; n.pivot.rotation.x = 0; } }
-  else if (player.grounded) { n.pivot.rotation.x = 0; }
+  else if (!player.grounded && !spinning) { player.runPhase += dt * 4; n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.15, 10, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.45, 10, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.4, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.4, 8, dt); }
+  if (player.rolling > 0) { player.rolling -= dt; if (player.rolling <= 0) player.rolling = 0; }
+  updateSpin(dt, n);
   if (player.squash > 0) { player.squash -= dt; const k = U.clamp(player.squash / 0.18, 0, 1); n.inner.scale.y = 1 - 0.22 * Math.sin(k * Math.PI); if (player.squash <= 0) n.inner.scale.y = 1; }
   if (G.state !== 'over') { const laneX = U.LANES[player.lane]; n.root.rotation.z = U.clamp(-(laneX - player.x) * 0.14, -0.3, 0.3); }
   n.inner.visible = player.invuln > 0 ? (Math.floor(performance.now() / 90) % 2 === 0) : true;

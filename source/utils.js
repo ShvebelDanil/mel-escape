@@ -181,6 +181,7 @@ export const Sound = {
     src.connect(f); f.connect(g); g.connect(this.sfxGain); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
   },
   jump() { this.tone(300, 640, 0.2, 'square', 0.12); }, land() { this.noise(0.12, 0.1, 500); }, roll() { this.noise(0.28, 0.14, 700); },
+  flip() { this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
   coin() { const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { this.noise(0.09, 0.06, 1400); }, stumble() { this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   crash() { this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
