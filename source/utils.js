@@ -16,8 +16,8 @@ export function weightedPick(items, weightOf) {
 
 export const UI = {};
 export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn',
-  'flash', 'yell', 'bottleNum', 'score', 'hint', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
-  'overBest', 'newRecord', 'musicBtn', 'soundBtn', 'game',
+  'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
+  'newRecord', 'musicBtn', 'soundBtn', 'pauseMusicBtn', 'pauseSoundBtn', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets'];
@@ -57,9 +57,11 @@ export function readLocalSave() {
 }
 export function syncToggleUI() {
   Sound.musicOn = !!save.music; Sound.sfxOn = !!save.sound;
-  const mb = $('musicBtn'), sb = $('soundBtn');
-  if (mb) mb.style.opacity = save.music ? '1' : '0.4';
-  if (sb) sb.textContent = save.sound ? '🔊' : '🔇';
+  const mb = $('musicBtn'), sb = $('soundBtn'), pmb = $('pauseMusicBtn'), psb = $('pauseSoundBtn');
+  if (mb) mb.classList.toggle('off', !save.music);
+  if (sb) sb.classList.toggle('off', !save.sound);
+  if (pmb) pmb.classList.toggle('off', !save.music);
+  if (psb) psb.classList.toggle('off', !save.sound);
 }
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {

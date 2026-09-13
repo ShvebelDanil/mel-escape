@@ -6,7 +6,8 @@ import * as SK from './skins.js';
 import * as PT from './pets.js';
 import * as SHOP from './shop.js';
 
-export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, hintT: 0 };
+const COMBO_WINDOW = 1.3;
+export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0 };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, x: 0, z: 0, phase: 0, headingY: 0 };
@@ -102,6 +103,13 @@ function updatePet(dt) {
   n.shadow.scale.setScalar(U.clamp(1 - bounce * 1.2, 0.6, 1));
 }
 function diaryTaken(on) { deskScene.diary.visible = !on; player.node.diary.visible = on; }
+function showCombo() {
+  G.combo++; G.comboT = COMBO_WINDOW;
+  const el = U.UI.comboText; if (!el) return;
+  const span = el.querySelector('span'); if (span) span.textContent = '×' + G.combo;
+  el.style.transform = `translate(${U.rand(-16, 16).toFixed(0)}px, ${U.rand(-12, 12).toFixed(0)}px)`;
+  U.replayCss(el);
+}
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.inner.visible = true; }
 function resetRun() {
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
@@ -111,6 +119,7 @@ function resetRun() {
   resetPose(); player.node.inner.scale.set(1, 1, 1); player.node.inner.position.y = -0.92;
   G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.nextZ = 42; G.reviveUsed = false; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
+  G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on');
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
 }
@@ -124,11 +133,11 @@ function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.ru
 function beginRun() {
   G.state = 'run'; intro.runStartZ = player.z; G.camBlend = 1; G.speed = U.BASE_SPEED; granny.zOff = granny.node.root.position.z - player.z; granny.targetZOff = -9.2;
   syncPetBehindPlayer();
-  U.show(U.UI.skipIntroBtn, false); U.show(U.UI.hud, true); G.hintT = 3.2; if (U.UI.hint) U.UI.hint.classList.add('on');
+  U.show(U.UI.skipIntroBtn, false); U.show(U.UI.hud, true);
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); G.hintT = 0; if (U.UI.hint) U.UI.hint.classList.remove('on'); U.Sound.ensure(); U.Sdk.gameplayStart(); }
+function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -156,7 +165,7 @@ function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; U.show(
 function resumeRun() { if (G.state !== 'paused') return; G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
 function showOverScreen() {
   G.overShown = true; const m = Math.floor(G.dist);
-  if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles; if (U.UI.overBest) U.UI.overBest.textContent = U.save.best;
+  if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles;
   U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over'); U.show(U.UI.reviveBtn, !G.reviveUsed && !!U.Sdk.ysdk);
 }
 function revive() {
@@ -232,12 +241,12 @@ function loop(t) {
     const pcy = player.y + 0.95;
     for (let i = ENT.activeCoins.length - 1; i >= 0; i--) {
       const c = ENT.activeCoins[i]; if (c.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseCoin(i); continue; }
-      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && Math.abs(pcy - c.y) < 1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); }
+      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && Math.abs(pcy - c.y) < 1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();
     for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; GFX.randomizeSegmentDecor(seg); } }
     const bobT = t / 300; for (const c of ENT.activeCoins) { c.sprite.position.y = c.y + Math.sin(bobT + c.sprite.userData.phase) * 0.09; }
-    if (G.hintT > 0) { G.hintT -= dt; if (G.hintT <= 0 && U.UI.hint) U.UI.hint.classList.remove('on'); }
+    if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) { G.combo = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); } }
     G.camBlend = Math.min(1, G.camBlend + dt * 1.6);
   } else if (G.state === 'over') {
     G.overT += dt; G.speed = Math.max(0, G.speed - 30 * dt); player.z += G.speed * dt;
@@ -286,6 +295,7 @@ function bindInput() {
   on('reviveBtn', act(() => { if (G.state !== 'over' || G.reviveUsed) return; U.show(U.UI.reviveBtn, false); U.showRewarded(revive, () => { if (G.state === 'over') U.show(U.UI.reviveBtn, true); }); }));
   const toggle = key => () => { U.save[key] = U.save[key] ? 0 : 1; U.syncToggleUI(); U.Sound.applyToggles(); U.persistSave(); U.Sound.click(); };
   on('musicBtn', toggle('music')); on('soundBtn', toggle('sound'));
+  on('pauseMusicBtn', toggle('music')); on('pauseSoundBtn', toggle('sound'));
 }
 
 let initStarted = false;
@@ -300,7 +310,6 @@ function init() {
   ENT.initParticles();
   const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
   if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
-  if (U.UI.hint) U.UI.hint.innerHTML = '<span>⬅️➡️ полосы</span><span>⬆️ прыжок</span><span>⬇️ подкат</span>';
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();

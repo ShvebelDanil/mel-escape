@@ -28,11 +28,10 @@
 
   h1.logo {
     font-size:clamp(34px, 9vw, 66px); line-height:1.04; font-weight:900;
-    color:#ffd94a; letter-spacing:1px; text-transform:uppercase;
+    color:#ffd94a; letter-spacing:1px; text-transform:uppercase; text-align:center;
     text-shadow:0 3px 0 #7a4b00, 0 6px 14px rgba(0,0,0,0.6);
   }
   h1.logo span { display:block; color:#fff; font-size:0.62em; text-shadow:0 3px 0 #333, 0 6px 14px rgba(0,0,0,0.6); }
-  .tagline { color:#cfe8d8; font-size:clamp(13px,3vw,17px); opacity:.9; margin-top:-6px; }
 
   .btn {
     appearance:none; border:none; cursor:pointer;
@@ -54,16 +53,26 @@
   .btn.ad { background:linear-gradient(180deg,#7ee081,#2fae4e); color:#06340f; box-shadow:0 5px 0 #1d7a36, 0 10px 20px rgba(0,0,0,0.45); }
   .btn.ad:active { box-shadow:0 1px 0 #1d7a36; }
 
+  .stack-panel { display:flex; flex-direction:column; align-items:stretch; gap:12px; width:min(300px, 82vw); }
+  .pause-toggles { display:flex; gap:10px; }
+  .pause-toggles .icon-btn { flex:1 1 0; min-width:0; width:auto; height:48px; border-radius:14px; font-size:20px; }
+  .pause-toggles .icon-btn.off::after { left:50%; right:auto; width:22px; margin-left:-11px; }
+
   .stats-box {
     background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
     border-radius:18px; padding:14px 26px; display:flex; gap:26px; align-items:center;
   }
   .stat { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:86px; }
+  #over .stats-box { justify-content:center; gap:28px; }
   .stat .v { font-size:clamp(22px,5vw,30px); font-weight:900; color:#ffd94a; display:flex; align-items:center; gap:6px; }
   .stat .l { font-size:12px; color:#b8ccbe; text-transform:uppercase; letter-spacing:1px; }
   .stat .v img { height:1em; }
 
-  .hint-row { display:flex; gap:18px; flex-wrap:wrap; justify-content:center; color:#dfe9df; font-size:clamp(12px,3vw,15px); }
+  .hint-row {
+    display:flex; gap:18px; flex-wrap:wrap; justify-content:center; color:#dfe9df; font-size:clamp(12px,3vw,15px);
+    position:absolute; left:50%; bottom:calc(16px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    width:min(560px, calc(100% - 32px));
+  }
   .hint-row b { background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:2px 9px; margin-right:5px; }
 
   #loading { background:#15221a; z-index:50; }
@@ -77,22 +86,36 @@
 
   #hud { z-index:5; justify-content:flex-start; align-items:stretch; flex-direction:row;
     background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
-  #hud > div { display:flex; align-items:center; gap:8px; }
-  #hudScoreWrap { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:calc(14px + env(safe-area-inset-left)); flex-direction:column !important; align-items:flex-start !important; }
-  #score { font-size:clamp(26px,6vw,38px); font-weight:900; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5); }
+  #hudRight {
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right));
+    display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+  }
+  #score { font-size:clamp(24px,6vw,44px); font-weight:900; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5); }
   #score small { font-size:0.55em; font-weight:700; opacity:.85; }
-  #hudRight { position:absolute; top:calc(10px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right)); }
   #bottleCount {
-    background:rgba(0,0,0,0.42); border:1px solid rgba(255,255,255,0.18);
-    border-radius:14px; padding:6px 14px; color:#fff;
-    font-size:clamp(17px,4.5vw,22px); font-weight:900; display:flex; align-items:center; gap:8px;
+    color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5);
+    font-size:clamp(19px,5vw,34px); font-weight:900; display:flex; align-items:center; gap:6px;
   }
-  #bottleCount img { height:1.5em; }
+  #bottleCount img { height:1em; }
   #pauseBtn {
+    position:absolute; top:calc(10px + env(safe-area-inset-top)); left:calc(14px + env(safe-area-inset-left));
     pointer-events:auto; cursor:pointer; appearance:none; border:1px solid rgba(255,255,255,0.25);
-    background:rgba(0,0,0,0.42); color:#fff; border-radius:14px; width:46px; height:46px;
-    font-size:18px; font-weight:900;
+    background:rgba(0,0,0,0.42); border-radius:14px; width:46px; height:46px;
+    display:flex; align-items:center; justify-content:center; gap:5px;
   }
+  #pauseBtn span { width:5px; height:16px; background:#fff; border-radius:2px; }
+
+  #comboText {
+    position:absolute; top:calc(96px + env(safe-area-inset-top)); right:calc(18px + env(safe-area-inset-right));
+    opacity:0; pointer-events:none; transition:opacity .5s ease; z-index:6;
+  }
+  #comboText span {
+    display:inline-block; font-size:clamp(24px,6.5vw,36px); font-weight:900; color:#ffe066;
+    text-shadow:0 2px 0 rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+  }
+  #comboText.on { opacity:1; }
+  #comboText.on span { animation:comboPop .3s ease; }
+  @keyframes comboPop { 0%{transform:scale(0.4);} 60%{transform:scale(1.22);} 100%{transform:scale(1);} }
 
   #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
     box-shadow:inset 0 0 140px 40px rgba(220,30,30,0.85); }
@@ -108,15 +131,7 @@
   #yell.on { animation:yellAnim 1.4s ease-out; }
   @keyframes yellAnim { 0%{opacity:0; transform:translateX(-50%) scale(.5);} 12%{opacity:1; transform:translateX(-50%) scale(1.15);} 22%{transform:translateX(-50%) scale(1);} 80%{opacity:1;} 100%{opacity:0;} }
 
-  #hint {
-    position:fixed; bottom:calc(18px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
-    z-index:6; color:#eaf3ea; background:rgba(0,0,0,0.5); border-radius:14px; padding:10px 18px;
-    font-size:clamp(12px,3.4vw,15px); pointer-events:none; opacity:0; transition:opacity .4s;
-    display:flex; gap:16px; white-space:nowrap;
-  }
-  #hint.on { opacity:1; }
-
-  .over-title { font-size:clamp(40px,11vw,72px); font-weight:900; color:#ff5252; text-transform:uppercase;
+  .over-title { font-size:clamp(28px,7.5vw,46px); font-weight:900; color:#ff5252; text-transform:uppercase;
     text-shadow:0 3px 0 #4d0000, 0 8px 18px rgba(0,0,0,0.7); }
   .new-record { background:#ffd94a; color:#5a3d00; font-weight:900; padding:4px 14px; border-radius:10px;
     font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:pulseNR 1s infinite alternate; }
@@ -124,7 +139,13 @@
 
   .corner-btns { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right)); display:flex; gap:8px; }
   .icon-btn { pointer-events:auto; cursor:pointer; width:44px; height:44px; border-radius:12px;
-    border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.4); color:#fff; font-size:20px; }
+    border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.4); color:#fff; font-size:20px;
+    position:relative; display:flex; align-items:center; justify-content:center; transition:opacity .15s ease; }
+  .icon-btn.off { opacity:.45; }
+  .icon-btn.off::after {
+    content:''; position:absolute; left:7px; right:7px; top:50%; height:2px;
+    background:#ff5252; border-radius:2px; transform:translateY(-50%) rotate(-45deg);
+  }
 
   #reviveBtn { display:flex; flex-direction:column; gap:2px; line-height:1.15; }
   #reviveBtn small { font-size:11px; font-weight:700; text-transform:none; letter-spacing:0; opacity:.85; }
@@ -141,11 +162,51 @@
   .btn.shop { background:linear-gradient(180deg,#b98bff,#7b3fe4); color:#fff; box-shadow:0 5px 0 #4f21a0, 0 10px 20px rgba(0,0,0,0.45); }
   .btn.shop:active { box-shadow:0 1px 0 #4f21a0, 0 4px 10px rgba(0,0,0,0.45); }
 
+  /* ===== Главное меню: единая система кнопок ===== */
+  #menu { gap:16px; }
+  #menu .cur-badge { padding:5px 12px; font-size:clamp(14px,3.8vw,17px); border-radius:12px; gap:6px; }
+  #menu .cur-badge img { height:1.3em; }
+
+  #menu .stats-box { width:min(300px, 82vw); box-sizing:border-box; justify-content:space-between; }
+  #menu .menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; width:min(300px, 82vw); margin-top:4px; }
+
+  .menu-btn {
+    appearance:none; border:none; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    border-radius:16px; text-transform:uppercase; letter-spacing:.5px;
+    transition:transform .06s ease, box-shadow .06s ease;
+  }
+  .menu-btn:active { transform:translateY(3px); }
+  .menu-btn-icon { font-size:1.1em; line-height:1; }
+
+  .menu-btn--play {
+    font-weight:800; color:#3a2a00;
+    background:linear-gradient(180deg,#ffe066,#ffb400);
+    padding:16px 28px; font-size:clamp(18px,4.5vw,24px);
+    box-shadow:0 5px 0 #b57e00, 0 10px 20px rgba(0,0,0,0.45);
+  }
+  .menu-btn--play:active { box-shadow:0 1px 0 #b57e00, 0 4px 10px rgba(0,0,0,0.45); }
+
+  .menu-btn-row { display:flex; gap:10px; }
+  .menu-btn--secondary {
+    flex:1 1 0; min-width:0; font-weight:700; color:#fff;
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22);
+    padding:12px 10px; font-size:clamp(13px,3.2vw,16px); gap:7px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    box-shadow:0 4px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.35);
+  }
+  .menu-btn--secondary:active { box-shadow:0 1px 0 rgba(0,0,0,0.35); }
+
   #shop { justify-content:flex-end; gap:0; padding:0;
     background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
   #shop > * { pointer-events:auto; }
   #shopTop { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left));
     right:calc(12px + env(safe-area-inset-right)); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  #shopBackBtn {
+    background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.32); color:#fff;
+    box-shadow:0 4px 0 rgba(0,0,0,0.4), 0 8px 18px rgba(0,0,0,0.4);
+  }
+  #shopBackBtn:active { box-shadow:0 1px 0 rgba(0,0,0,0.4); }
   .arrow-btn {
     position:absolute; top:46%; transform:translateY(-50%);
     width:clamp(48px,12vw,62px); height:clamp(48px,12vw,62px); border-radius:50%;
@@ -221,17 +282,15 @@
 
 <!-- HUD -->
 <div id="hud" class="overlay hidden">
-  <div id="hudScoreWrap">
-    <div id="score">0 <small>м</small></div>
-  </div>
+  <button id="pauseBtn" aria-label="Пауза"><span></span><span></span></button>
   <div id="hudRight">
-    <button id="pauseBtn" aria-label="Пауза">II</button>
-    <div id="bottleCount"><img id="bottleIcon" alt="">×<span id="bottleNum">0</span></div>
+    <div id="score">0 <small>м</small></div>
+    <div id="bottleCount"><span id="bottleNum">0</span><img id="bottleIcon" alt=""></div>
   </div>
+  <div id="comboText"><span></span></div>
 </div>
 <div id="flash"></div>
 <div id="yell"></div>
-<div id="hint"></div>
 
 <!-- Кнопка пропуска интро -->
 <button id="skipIntroBtn" class="btn ghost small hidden" style="position:fixed; bottom:calc(20px + env(safe-area-inset-bottom)); right:calc(20px + env(safe-area-inset-right)); z-index:9;">Пропустить ⏭</button>
@@ -251,14 +310,17 @@
     <button class="icon-btn" id="soundBtn" aria-label="Звук">🔊</button>
   </div>
   <h1 class="logo">Мэл<span>Побег из школы</span></h1>
-  <div class="tagline" id="menuTagline">Стяни дневник и убеги от злой учительницы!</div>
   <div class="stats-box">
     <div class="stat"><div class="v" id="menuBest">0</div><div class="l" id="menuBestLabel">Рекорд, м</div></div>
     <div class="stat"><div class="v"><img id="menuBottleIcon" alt=""><span id="menuBottles">0</span></div><div class="l" id="menuBottlesLabel">Всего собрано</div></div>
   </div>
-  <button class="btn" id="playBtn">▶ Играть</button>
-  <button class="btn shop" id="shopBtn">🛍 Магазин</button>
-  <button class="btn ghost" id="petsBtn">🐾 Питомцы</button>
+  <div class="menu-actions">
+    <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span>Играть</button>
+    <div class="menu-btn-row">
+      <button class="menu-btn menu-btn--secondary" id="shopBtn">Магазин</button>
+      <button class="menu-btn menu-btn--secondary" id="petsBtn">Питомцы</button>
+    </div>
+  </div>
   <div class="hint-row">
     <span><b>←</b><b>→</b> полосы</span>
     <span><b>↑</b> прыжок</span>
@@ -269,24 +331,37 @@
 
 <!-- Pause -->
 <div id="pause" class="overlay hidden">
-  <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
-  <button class="btn" id="resumeBtn">▶ Продолжить</button>
-  <button class="btn ghost" id="restartBtn">🔄 Заново</button>
-  <button class="btn ghost" id="pauseMenuBtn">🏠 В меню</button>
+  <div class="stack-panel">
+    <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
+    <button class="btn" id="resumeBtn">▶ Продолжить</button>
+    <div class="pause-toggles">
+      <button class="icon-btn" id="pauseMusicBtn" aria-label="Музыка">♪</button>
+      <button class="icon-btn" id="pauseSoundBtn" aria-label="Звук">🔊</button>
+    </div>
+    <button class="btn ghost" id="restartBtn">Заново</button>
+    <button class="btn ghost" id="pauseMenuBtn">В меню</button>
+  </div>
+  <div class="hint-row">
+    <span><b>←</b><b>→</b> полосы</span>
+    <span><b>↑</b> прыжок</span>
+    <span><b>↓</b> подкат</span>
+    <span><b>свайпы</b> на телефоне</span>
+  </div>
 </div>
 
 <!-- Game over -->
 <div id="over" class="overlay hidden">
   <div class="over-title" id="overTitle">Попался!</div>
   <div class="new-record hidden" id="newRecord">🏆 Новый рекорд!</div>
-  <div class="stats-box">
-    <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
-    <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Бутылок</div></div>
-    <div class="stat"><div class="v" id="overBest">0</div><div class="l" id="overBestLabel">Рекорд</div></div>
+  <div class="stack-panel">
+    <div class="stats-box">
+      <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
+      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Бутылок</div></div>
+    </div>
+    <button class="btn" id="againBtn">▶ Ещё раз</button>
+    <button class="btn ad hidden" id="reviveBtn"><span>📺 Второй шанс</span><small id="reviveHint">посмотри рекламу и беги дальше</small></button>
+    <button class="btn ghost" id="overMenuBtn">В меню</button>
   </div>
-  <button class="btn" id="againBtn">▶ Ещё раз</button>
-  <button class="btn ad hidden" id="reviveBtn"><span>📺 Второй шанс</span><small id="reviveHint">посмотри рекламу и беги дальше</small></button>
-  <button class="btn ghost" id="overMenuBtn">🏠 В меню</button>
 </div>
 
 <!-- Shop -->
