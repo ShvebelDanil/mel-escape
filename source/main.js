@@ -183,6 +183,7 @@ function showCombo() {
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spinDir = 0; player.spinT = 0; }
 function resetRun() {
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
+  ENT.resetPending();
   for (let i = ENT.activeCoins.length - 1; i >= 0; i--) ENT.releaseCoin(i);
   segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
   player.lane = 1; player.x = 0; player.y = 0; player.vy = 0; player.z = 0; player.groundY = 0; player.grounded = true; player.rolling = 0; player.invuln = 0; player.squash = 0;
@@ -370,6 +371,7 @@ function loop(t) {
     player.node.root.rotation.z = Math.sin(G.overT * 9) * 0.16 * Math.max(0, 1 - G.overT); player.node.inner.rotation.x = U.damp(player.node.inner.rotation.x, -0.35, 4, dt);
     if (G.overT > 1.15 && !G.overShown) showOverScreen();
   } else if (G.state === 'menu') { G.camBlend = Math.max(0, G.camBlend - dt * 1.6); } else if (G.state === 'intro') { updateIntro(dt); }
+  ENT.pumpObstacles(player.z); // дальние препятствия входят в сцену только у границы тумана
   if (G.state === 'run' || G.state === 'over') updatePet(dt); else if (G.state === 'menu') animatePetMenuIdle(dt);
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);

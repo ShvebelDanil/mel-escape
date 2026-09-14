@@ -34,15 +34,38 @@ export function buildClassroom() {
   GFX.finalizeStatic(g); return { group: g, diary: td.diary };
 }
 
+// y0/y1 — вертикальный габарит коллизии. Правила честности (проверяются в level.js:runFeasible):
+//   перепрыгнуть можно, пока y1 <= 1.72 (апогей прыжка 1.45 + PLATFORM_TOL);
+//   подкатиться можно, пока y0 >= 0.76 (рост в подкате 0.80 + запас 0.04);
+//   блокер = ни то, ни другое, его обходят сменой полосы.
 export const OB_DEFS = {
-  desk:   { hw: 0.72, hz: 0.90, y0: 0,    y1: U.DESK_TOP_Y, platform: true },
-  tower:  { hw: 0.72, hz: 0.90, y0: 0,    y1: 2.20, platform: true },
-  banner: { hw: 1.02, hz: 0.18, y0: 1.05, y1: 2.95, platform: false },
-  locker: { hw: 0.72, hz: 0.40, y0: 0,    y1: 2.70, platform: true },
-  door:   { hw: 0.74, hz: 0.30, y0: 0,    y1: 2.55, platform: false },
-  shelf:  { hw: 0.72, hz: 0.36, y0: 0,    y1: 2.40, platform: true },
-  cart:   { hw: 0.50, hz: 0.50, y0: 0,    y1: 1.00, platform: true },
-  sign:   { hw: 0.30, hz: 0.28, y0: 0,    y1: 0.82, platform: false }
+  desk:      { hw: 0.72, hz: 0.90, y0: 0,    y1: U.DESK_TOP_Y, platform: true },
+  tower:     { hw: 0.72, hz: 0.90, y0: 0,    y1: 2.20, platform: true },
+  banner:    { hw: 1.02, hz: 0.18, y0: 1.05, y1: 2.95, platform: false },
+  locker:    { hw: 0.72, hz: 0.40, y0: 0,    y1: 2.70, platform: true },
+  door:      { hw: 0.74, hz: 0.30, y0: 0,    y1: 2.55, platform: false },
+  shelf:     { hw: 0.72, hz: 0.36, y0: 0,    y1: 2.40, platform: true },
+  cart:      { hw: 0.50, hz: 0.50, y0: 0,    y1: 1.00, platform: true },
+  sign:      { hw: 0.30, hz: 0.28, y0: 0,    y1: 0.82, platform: false },
+  // завалы и мебель
+  lockerDown:{ hw: 0.76, hz: 1.30, y0: 0,    y1: 0.76, platform: true },
+  deskStack: { hw: 0.72, hz: 0.90, y0: 0,    y1: 2.15, platform: false },
+  chairPile: { hw: 0.68, hz: 0.60, y0: 0,    y1: 1.20, platform: false }, // похож на парту, но приземлиться нельзя
+  chairTower:{ hw: 0.40, hz: 0.44, y0: 0,    y1: 2.15, platform: false },
+  standBoard:{ hw: 0.75, hz: 0.28, y0: 0,    y1: 2.05, platform: false },
+  // мелочь для плотных цепочек
+  books:     { hw: 0.55, hz: 0.38, y0: 0,    y1: 0.52, platform: true },
+  bags:      { hw: 0.60, hz: 0.42, y0: 0,    y1: 0.46, platform: true },
+  bucket:    { hw: 0.42, hz: 0.45, y0: 0,    y1: 0.50, platform: false },
+  pipe:      { hw: 0.80, hz: 0.22, y0: 0,    y1: 0.60, platform: false },
+  // обязательный подкат
+  board:     { hw: 0.86, hz: 0.28, y0: 1.05, y1: 1.98, platform: false },
+  ladder:    { hw: 0.64, hz: 0.52, y0: 1.25, y1: 2.53, platform: false },
+  // спортзал и хозчасть
+  mat:       { hw: 0.80, hz: 0.80, y0: 0,    y1: 0.80, platform: true },
+  vault:     { hw: 0.58, hz: 0.42, y0: 0,    y1: 1.24, platform: true },
+  trayCart:  { hw: 0.52, hz: 0.52, y0: 0,    y1: 1.16, platform: true },
+  cooler:    { hw: 0.42, hz: 0.38, y0: 0,    y1: 1.92, platform: false }
 };
 
 function buildChairMesh() {
@@ -69,13 +92,33 @@ function buildObstacle(type) {
   else if (type === 'cart') g.add(buildCartMesh());
   else if (type === 'sign') { GFX.put(g, GFX.panel(0.56, 0.84, 0.04, '#e9bb1c', GFX.signTex, [-1]), 0, 0.4, -0.13).rotation.x = 0.3; GFX.put(g, GFX.panel(0.56, 0.84, 0.04, '#e9bb1c', GFX.signTex, [1]), 0, 0.4, 0.13).rotation.x = -0.3; GFX.put(g, GFX.box(0.58, 0.05, 0.08, '#c9a020'), 0, 0.8, 0); }
   else if (type === 'door') { for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.12, 2.5, 0.16, '#6d4c2f'), s * 0.66, 1.25, 0); GFX.put(g, GFX.box(0.16, 0.08, 0.9, '#4e3521'), s * 0.66, 0.04, 0); for (const dz of [-1, 1]) GFX.put(g, GFX.box(0.06, 0.58, 0.06, '#4e3521'), s * 0.66, 0.29, dz * 0.175).rotation.x = dz * 0.65; } GFX.put(g, GFX.box(1.48, 0.14, 0.16, '#6d4c2f'), 0, 2.43, 0); GFX.put(g, GFX.box(1.2, 2.32, 0.07, '#8a5a33'), 0, 1.2, 0); GFX.put(g, GFX.box(0.46, 0.62, 0.03, '#cfe6ee'), 0, 1.85, -0.045); GFX.put(g, GFX.box(0.5, 0.14, 0.02, '#e8e2c8'), 0, 1.42, -0.045); GFX.put(g, GFX.sph(0.06, 8, 8, '#e0b83e'), 0.42, 1.15, -0.08); }
+  // Ниже — препятствия из второй волны. У каждого не больше ОДНОЙ текстуры: bakeStatic
+  // склеивает все одноцветные ламбертовы детали в единый меш с вершинными цветами, поэтому
+  // разноцветная мелочь бесплатна, а каждый текстурный материал — это отдельный draw call.
+  else if (type === 'lockerDown') { GFX.put(g, GFX.box(1.5, 0.72, 2.56, '#6d7986'), 0, 0.36, 0); const face = GFX.tplane(1.44, 2.46, GFX.lockerTex); face.rotation.x = -Math.PI / 2; GFX.put(g, face, 0, 0.725, 0); for (const s of [-1, 1]) GFX.put(g, GFX.box(1.56, 0.12, 0.14, '#4d5762'), 0, 0.4, s * 1.28); GFX.put(g, GFX.box(0.16, 0.1, 0.34, '#f3c53d'), 0.62, 0.74, -0.5); }
+  else if (type === 'deskStack') { g.add(buildDeskMesh()); GFX.put(g, GFX.box(1.5, 0.09, 0.78, '#a9713c'), 0, 1.1, 0.25); GFX.put(g, GFX.box(0.7, 0.06, 0.7, '#8a5a30'), 0.3, 1.04, 0.25); for (const [lx, lz] of [[-0.62, -0.02], [0.62, -0.02], [-0.62, 0.55], [0.62, 0.55]]) GFX.put(g, GFX.box(0.07, 1.0, 0.07, '#3c4148'), lx, 1.65, lz - 0.05); }
+  else if (type === 'chairPile') { const a = buildChairMesh(); a.rotation.z = Math.PI; a.rotation.y = 0.5; GFX.put(g, a, -0.14, 1.18, 0.02); const b = buildChairMesh(); b.rotation.x = Math.PI * 0.5; b.rotation.y = -0.7; GFX.put(g, b, 0.3, 0.28, -0.06); const c = buildChairMesh(); c.rotation.z = 0.16; c.rotation.y = 1.1; GFX.put(g, c, -0.1, 0, 0.22); }
+  else if (type === 'chairTower') { for (let i = 0; i < 5; i++) { const c = buildChairMesh(); c.rotation.y = (i % 2 ? 0.09 : -0.07); GFX.put(g, c, (i % 2 ? 0.035 : -0.035), i * 0.235, 0); } }
+  else if (type === 'standBoard') { GFX.put(g, GFX.box(1.44, 1.7, 0.1, '#5d4634'), 0, 1.25, 0); GFX.put(g, GFX.tplane(1.2, 1.48, U.pick(GFX.posterTexes)), 0, 1.25, 0.056); for (const s of [-1, 1]) GFX.put(g, GFX.box(0.09, 2.05, 0.09, '#4e3521'), s * 0.62, 1.02, 0); GFX.put(g, GFX.box(1.5, 0.08, 0.52, '#4e3521'), 0, 0.04, 0); }
+  else if (type === 'books') { const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a']; for (const [bx, bz, n] of [[-0.28, -0.08, 6], [0.24, 0.12, 4], [0.02, -0.24, 3]]) for (let i = 0; i < n; i++) GFX.put(g, GFX.box(0.42 - (i % 2) * 0.05, 0.09, 0.32, cols[(i + n) % 5]), bx + (i % 2) * 0.03, 0.045 + i * 0.09, bz); GFX.put(g, GFX.box(0.3, 0.02, 0.24, '#d9d2bd'), -0.02, 0.01, 0.26).rotation.y = 0.4; }
+  else if (type === 'bags') { for (const [bx, bz, c, r] of [[-0.26, -0.04, '#2e5f8a', 0.4], [0.26, 0.14, '#7a2f3a', -0.6]]) { const p = GFX.box(0.46, 0.42, 0.32, c); p.rotation.y = r; GFX.put(g, p, bx, 0.21, bz); const f = GFX.box(0.32, 0.16, 0.1, '#1d1f24'); f.rotation.y = r; GFX.put(g, f, bx + Math.sin(r) * 0.16, 0.34, bz + Math.cos(r) * 0.16); } GFX.put(g, GFX.box(0.3, 0.04, 0.22, '#d9d2bd'), 0.02, 0.02, -0.26); GFX.put(g, GFX.cyl(0.03, 0.03, 0.2, 6, '#c98a2b'), -0.02, 0.03, 0.28).rotation.z = Math.PI / 2; }
+  else if (type === 'bucket') { GFX.put(g, GFX.cyl(0.28, 0.22, 0.42, 10, '#3f7a8a'), 0, 0.21, 0); GFX.put(g, GFX.cyl(0.27, 0.27, 0.05, 10, '#2b5e6b'), 0, 0.43, 0); const st = GFX.cyl(0.035, 0.035, 1.2, 6, '#9a7040'); st.rotation.x = Math.PI * 0.45; GFX.put(g, st, -0.2, 0.11, 0.14); GFX.put(g, GFX.box(0.3, 0.1, 0.18, '#d9d2bd'), -0.2, 0.06, 0.66); }
+  else if (type === 'pipe') { const p = GFX.cyl(0.14, 0.14, 1.94, 10, '#8d98a4'); p.rotation.z = Math.PI / 2; GFX.put(g, p, 0, 0.46, 0); for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.14, 0.46, 0.2, '#5a636e'), s * 0.74, 0.23, 0); GFX.put(g, GFX.box(0.3, 0.07, 0.32, '#4d5762'), s * 0.74, 0.035, 0); } GFX.put(g, GFX.cyl(0.17, 0.17, 0.1, 10, '#6b7580'), 0.3, 0.46, 0).rotation.z = Math.PI / 2; }
+  else if (type === 'board') { for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.12, 1.06, 0.46, '#5d4634'), s * 1.0, 0.53, 0); GFX.put(g, GFX.box(0.26, 0.08, 0.58, '#4e3521'), s * 1.0, 0.04, 0); } GFX.put(g, GFX.box(2.14, 0.12, 0.42, '#5d4634'), 0, 1.12, 0); GFX.put(g, GFX.box(1.9, 0.82, 0.1, '#5d4634'), 0, 1.56, 0); GFX.put(g, GFX.tplane(1.74, 0.7, GFX.boardTex), 0, 1.56, 0.056); GFX.put(g, GFX.box(2.14, 0.1, 0.16, '#5d4634'), 0, 1.93, 0); }
+  else if (type === 'ladder') { for (const s of [-1, 1]) for (const lx of [-0.52, 0.52]) { const leg = GFX.box(0.1, 2.34, 0.1, '#9a7040'); leg.rotation.x = s * 0.17; GFX.put(g, leg, lx, 1.16, s * 0.22); } for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(1.04, 0.07, 0.1, '#8a6236'), 0, 1.36 + i * 0.36, -0.26); GFX.put(g, GFX.box(1.18, 0.09, 0.6, '#8a6236'), 0, 2.34, 0); GFX.put(g, GFX.cyl(0.16, 0.13, 0.22, 10, '#3f7a8a'), 0.24, 2.45, 0.02); }
+  else if (type === 'mat') { const cols = ['#1f6fa8', '#b23a3a', '#2f8a5e']; for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(1.52 - i * 0.06, 0.26, 1.5 - i * 0.06, cols[i]), (i % 2 ? 0.04 : -0.04), 0.13 + i * 0.26, (i % 2 ? -0.03 : 0.04)); GFX.put(g, GFX.box(1.4, 0.03, 1.38, '#d9d2bd'), 0, 0.795, 0); }
+  else if (type === 'vault') { GFX.put(g, GFX.box(0.98, 0.32, 0.54, '#8a6236'), 0, 1.04, 0); GFX.put(g, GFX.box(1.04, 0.08, 0.6, '#5c4633'), 0, 1.2, 0); GFX.put(g, GFX.box(0.82, 0.36, 0.48, '#a07a4a'), 0, 0.7, 0); for (const [lx, lz] of [[-0.3, -0.16], [0.3, -0.16], [-0.3, 0.16], [0.3, 0.16]]) { const lg = GFX.box(0.09, 0.64, 0.09, '#3c4148'); lg.rotation.z = lx > 0 ? -0.11 : 0.11; GFX.put(g, lg, lx, 0.32, lz); } }
+  else if (type === 'trayCart') { g.add(buildCartMesh()); for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(0.78, 0.05, 0.6, i % 2 ? '#d9d2bd' : '#b8c2cc'), (i % 2 ? 0.035 : -0.035), 1.02 + i * 0.055, 0); }
+  else if (type === 'cooler') { GFX.put(g, GFX.box(0.56, 1.2, 0.5, '#e6e8ea'), 0, 0.6, 0); GFX.put(g, GFX.box(0.6, 0.1, 0.54, '#9aa4ae'), 0, 1.22, 0); GFX.put(g, GFX.cyl(0.25, 0.2, 0.6, 12, '#7fb6d9'), 0, 1.57, 0); GFX.put(g, GFX.cyl(0.13, 0.13, 0.1, 10, '#4a5560'), 0, 1.87, 0); GFX.put(g, GFX.box(0.26, 0.1, 0.1, '#2b5e6b'), 0, 0.84, 0.29); GFX.put(g, GFX.box(0.62, 0.08, 0.56, '#4a5560'), 0, 0.04, 0); }
   GFX.finalizeStatic(g); g.matrixAutoUpdate = false; return g; // матрица группы пересчитывается только при спавне, см. spawnObstacle
 }
 
 // Тени препятствий: раньше у каждого препятствия был свой прозрачный диск — до 20 отдельных
 // draw call за кадр. Теперь это один InstancedMesh, а матрицы пишутся только при спавне и
 // освобождении (препятствия не двигаются относительно мира, так что в кадре работы ноль).
-const SHADOW_MAX = 64;
+const SHADOW_MAX = 96;   // замер на новой плотности: пик 52 одновременно активных препятствий (было 25).
+                         // Лимит — только ёмкость инстансинга, рисуется всегда obShadows.count, так что
+                         // запас бесплатен; при переполнении тени просто молча пропадали бы.
 let obShadows = null;
 const shadowOwner = [];
 let _shm, _shq, _shv, _shs;
@@ -99,23 +142,45 @@ function shadowRemove(o) {
   shadowOwner[last] = null; obShadows.count = last; o.shadowIdx = -1;
 }
 
-export const obstaclePool = { desk: [], tower: [], banner: [], locker: [], door: [], shelf: [], cart: [], sign: [] };
+export const obstaclePool = {};
+for (const t in OB_DEFS) obstaclePool[t] = [];
 export const activeObstacles = [];
 const obDescPool = []; // описатели препятствий тоже переиспользуются (правило нулевых аллокаций)
+
+// Спавн идёт на SPAWN_AHEAD=170 м вперёд, а туман глухой уже на FOG_FAR=130 — всё, что дальше,
+// рисуется впустую. Поэтому препятствие заводится логически сразу (коллизии и маршрут считаются
+// от него), а в сцену попадает только когда подходит на VIS_AHEAD. Дальние объекты лежат в
+// pending (он упорядочен по z по построению) и добавляются в pumpObstacles() из игрового цикла.
+const VIS_AHEAD = U.FOG_FAR + 6;
+const pending = [];
+let pendHead = 0;
+export function pumpObstacles(viewZ) {
+  while (pendHead < pending.length) {
+    const o = pending[pendHead];
+    if (o && o.z - viewZ > VIS_AHEAD) break;
+    pending[pendHead] = null; pendHead++;
+    if (o) { o.pendIdx = -1; if (o.group) GFX.scene.add(o.group); }
+  }
+  if (pendHead >= pending.length) { pending.length = 0; pendHead = 0; }
+}
+export function resetPending() { pending.length = 0; pendHead = 0; }
+
 export function spawnObstacle(type, x, z, rot) {
   let g = obstaclePool[type].pop(); if (!g) g = buildObstacle(type);
   g.position.set(x, 0, z);
   if (rot !== undefined) g.rotation.y = rot; else if (type === 'desk' || type === 'tower') g.rotation.y = Math.random() < 0.5 ? Math.PI : 0; else g.rotation.y = 0;
-  g.updateMatrix(); GFX.scene.add(g);
+  g.updateMatrix();
   const def = OB_DEFS[type], o = obDescPool.pop() || {};
   o.t = type; o.x = x; o.z = z; o.group = g; o.stumbled = false; o.petHandled = false;
   o.hw = def.hw; o.hz = def.hz; o.y0 = def.y0; o.y1 = def.y1; o.platform = def.platform;
   o.shadowIdx = shadowAdd(x, z, def.hw + 0.25);
   if (o.shadowIdx >= 0) shadowOwner[o.shadowIdx] = o;
+  o.pendIdx = -1; pending.push(o); o.pendIdx = pending.length - 1;
   activeObstacles.push(o);
 }
 export function releaseObstacle(i) {
   const o = activeObstacles[i]; shadowRemove(o); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
+  if (o.pendIdx >= 0) { pending[o.pendIdx] = null; o.pendIdx = -1; } // ещё не показан — вычёркиваем, иначе оживёт уже освобождённым
   o.group = null; activeObstacles.splice(i, 1); obDescPool.push(o);
 }
 export function clearObstacles(fromZ, toZ) { for (let i = activeObstacles.length - 1; i >= 0; i--) { const o = activeObstacles[i]; if (o.z > fromZ && o.z < toZ) releaseObstacle(i); } }
