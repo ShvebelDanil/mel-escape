@@ -2,6 +2,7 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import { createMelVisual as melSchoolboy } from '../assets/models/mel6-visual.js';
 import { createMelVisual as melSchoolboy2 } from '../assets/models/mel7-visual.js';
+import { createMelVisual as melDarkDrun } from '../assets/models/mel8-visual.js';
 import { createMelVisual as melPunk } from '../assets/models/mel5-visual.js';
 import { createMelVisual as melGucci } from '../assets/models/mel-visual.js';
 
@@ -9,6 +10,7 @@ import { createMelVisual as melGucci } from '../assets/models/mel-visual.js';
 export const SKINS = [
   { id: 'schoolboy', name: 'ШКОЛЬНИК', price: 0, desc: 'Классический скин Мэла. Всё как в обычной школе.', build: melSchoolboy },
   { id: 'schoolboy2', name: 'ШКОЛЬНИК 2.0', price: 250, desc: 'Свежая форма, зелёный галстук и рюкзак отличника.', build: melSchoolboy2 },
+  { id: 'darkdrun', name: 'ТЁМНЫЙ ДРУН', price: 400, desc: 'Пуховик с ушами. Капюшон не снимает даже на уроке.', build: melDarkDrun },
   { id: 'punk', name: 'ПАНК', price: 500, desc: 'Дневник сдавать не собирается. Вообще никогда.', build: melPunk },
   { id: 'mell', name: 'МЕЛЛ', price: 700, desc: 'Деньги с обеда депает в казик.', build: melGucci }
 ];
