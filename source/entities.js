@@ -177,6 +177,15 @@ export function spawnObstacle(type, x, z, rot) {
   if (o.shadowIdx >= 0) shadowOwner[o.shadowIdx] = o;
   o.pendIdx = -1; pending.push(o); o.pendIdx = pending.length - 1;
   activeObstacles.push(o);
+  // Бутылка не должна оказаться внутри препятствия. Награда предыдущего паттерна могла
+  // выступить в зазор (арка прыжка тянется на полсекунды дальше последнего объекта),
+  // а препятствие ставится сюда только сейчас — значит, чистить надо на этой стороне.
+  // Полосы разнесены на 2.3 м при самом широком объекте 0.86 м, поэтому сравнения x хватает.
+  for (let i = activeCoins.length - 1; i >= 0; i--) {
+    const c = activeCoins[i];
+    if (Math.abs(c.x - x) > 0.1 || Math.abs(c.z - z) >= def.hz + COIN_PAD_Z) continue;
+    if (c.y + COIN_PAD_Y > def.y0 && c.y - COIN_PAD_Y < def.y1) releaseCoin(i);   // на крыше парты — можно, внутри — нет
+  }
 }
 export function releaseObstacle(i) {
   const o = activeObstacles[i]; shadowRemove(o); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
@@ -188,7 +197,8 @@ export function clearObstacles(fromZ, toZ) { for (let i = activeObstacles.length
 // Бутылки: раньше каждая была THREE.Sprite, то есть отдельный draw call (в забеге до 20 за кадр).
 // Теперь все они — один меш из квадов, развёрнутых по базису камеры ровно так же, как это делает
 // спрайт, поэтому вид не меняется. Буферы созданы один раз, в кадре только перезапись координат.
-const COIN_MAX = 64, COIN_HW = 0.31, COIN_HH = 0.7; // наблюдаемый максимум в забеге ~20, запас трёхкратный
+const COIN_MAX = 64, COIN_HW = 0.31, COIN_HH = 0.7; // после учащения наград замеренный пик в забеге 29, запас двукратный
+export const COIN_PAD_Z = 0.36, COIN_PAD_Y = 0.32;   // полузазор вокруг бутылки при проверке на препятствия, м
 export const activeCoins = [];
 const coinDescPool = [];
 let coinMesh = null, coinPos = null;

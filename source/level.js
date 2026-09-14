@@ -266,10 +266,41 @@ function choosePattern(prog, relax) {
   return poolP[n - 1];
 }
 
+// ─── бутылки ─────────────────────────────────────────────────────────────────────
+// Позиция бутылки вынесена из спавна отдельно: тот же расчёт нужен ЗАРАНЕЕ, чтобы
+// отбросить награду, которую перекрыли филлеры. Паттерн объявляет награды в build(),
+// а филлеры досыпают препятствия уже после — и про награды ничего не знают.
+const COIN_PAD_Z = ENT.COIN_PAD_Z, COIN_PAD_Y = ENT.COIN_PAD_Y;
+let _cy = 0, _ct = 0;                         // позиция очередной бутылки: высота и время от начала паттерна
+function rewCount(r, v) {
+  if (r.k === 'arc') return 5;
+  if (r.k === 'low') return 3;
+  return U.clamp(Math.round((r.t1 - r.t0) * v / COIN_STEP), 1, 8) + 1;
+}
+function rewCoin(r, i, n, v) {
+  if (r.k === 'arc') { const tt = i / 4 * JUMP_T; _ct = r.time - JUMP_T / 2 + tt; _cy = 0.95 + jumpY(tt); }
+  else if (r.k === 'low') { _ct = r.time + (i - 1) * 0.2; _cy = 0.6; }
+  else { _ct = r.t0 + (r.t1 - r.t0) * i / (n - 1); _cy = r.y; }
+}
+// Полосы разнесены на 2.3 м, самое широкое препятствие — 0.86 м, поэтому по X достаточно
+// сравнить номер полосы. На крыше парты бутылка стоять может, внутри парты — нет.
+function coinFree(r, v) {
+  for (let i = 0; i < nObs; i++) {
+    const o = obs[i]; if (o.l !== r.l) continue;
+    const d = ENT.OB_DEFS[o.t];
+    if (Math.abs(o.time - _ct) * v >= d.hz + COIN_PAD_Z) continue;
+    if (_cy + COIN_PAD_Y > d.y0 && _cy - COIN_PAD_Y < d.y1) return false;
+  }
+  return true;
+}
+function rewBlocked(r, v) {
+  const n = rewCount(r, v);
+  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (!coinFree(r, v)) return true; }
+  return false;
+}
 function spawnReward(r, z0, v) {
-  if (r.k === 'arc') { for (let i = 0; i < 5; i++) { const tt = i / 4 * JUMP_T; ENT.spawnCoin(U.LANES[r.l], 0.95 + U.JUMP_V * tt - 0.5 * U.GRAVITY * tt * tt, z0 + (r.time - JUMP_T / 2 + tt) * v); } }
-  else if (r.k === 'low') { for (let i = -1; i <= 1; i++) ENT.spawnCoin(U.LANES[r.l], 0.6, z0 + (r.time + i * 0.2) * v); }
-  else { const n = U.clamp(Math.round((r.t1 - r.t0) * v / COIN_STEP), 1, 8); for (let i = 0; i <= n; i++) ENT.spawnCoin(U.LANES[r.l], r.y, z0 + (r.t0 + (r.t1 - r.t0) * i / n) * v); }
+  const n = rewCount(r, v);
+  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (coinFree(r, v)) ENT.spawnCoin(U.LANES[r.l], _cy, z0 + _ct * v); }
 }
 const gapRew = { k: 'line', l: 1, t0: 0, t1: 0, y: 0.95, must: false, time: 0 };
 
@@ -322,13 +353,19 @@ export function fillSpawns() {
     sortObsByTime();
     for (let i = 0; i < nObs; i++) { const o = obs[i]; ENT.spawnObstacle(o.t, o.x, z0 + o.time * v, o.rot); }
 
-    let must = null;
-    for (let i = 0; i < nRew; i++) if (rewards[i].must) { must = rewards[i]; break; }
-    if (must || (Director.coinCd <= 0 && nRew)) {
-      spawnReward(must || rewards[U.randi(0, nRew - 1)], z0, v); Director.coinCd = U.rand(3.5, 7);
-    } else if (Director.coinCd <= 0 && gap >= 0.8) {
+    // 4) награда. Обязательная идёт всегда — она подсказывает маршрут, и отдельные
+    // перекрытые бутылки из неё отсеются поштучно в spawnReward. Случайная берётся
+    // только чистая: если все попытки заняты препятствиями, кулдаун остаётся
+    // отрицательным и награда выпадет на следующем паттерне.
+    let pick = null;
+    for (let i = 0; i < nRew; i++) if (rewards[i].must) { pick = rewards[i]; break; }
+    if (!pick && Director.coinCd <= 0 && nRew) {
+      for (let k = 0; k < 4; k++) { const c = rewards[U.randi(0, nRew - 1)]; if (!rewBlocked(c, v)) { pick = c; break; } }
+    }
+    if (pick) { spawnReward(pick, z0, v); Director.coinCd = U.rand(1.6, 3.0); }
+    else if (Director.coinCd <= 0 && gap >= 0.8) {
       gapRew.l = Director.lane; gapRew.t0 = -gap + 0.25; gapRew.t1 = -0.3;
-      spawnReward(gapRew, z0, v); Director.coinCd = U.rand(3.5, 7);
+      spawnReward(gapRew, z0, v); Director.coinCd = U.rand(1.6, 3.0);
     }
     Director.coinCd -= gap + b.len;
 
