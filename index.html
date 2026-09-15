@@ -254,9 +254,11 @@
   #skinAction[data-state="select"]:active { box-shadow:0 1px 0 #1a5aa5; }
   #skinAction[data-state="selected"] { background:linear-gradient(180deg,#7ee081,#2fae4e); color:#06340f; box-shadow:0 5px 0 #1d7a36; cursor:default; }
 
-  #skinDots { display:flex; gap:7px; margin-top:2px; }
-  #skinDots i { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.28); }
-  #skinDots i.on { background:#ffd94a; transform:scale(1.15); }
+  #skinDots { display:flex; gap:0; margin-top:2px; }
+  /* padding + background-clip: точка визуально остаётся 8px, но зона клика 20px */
+  #skinDots i { width:8px; height:8px; padding:5px; box-sizing:content-box; background-clip:content-box;
+    border-radius:50%; background-color:rgba(255,255,255,0.28); cursor:pointer; transition:background-color .12s; }
+  #skinDots i.on { background-color:#ffd94a; }
 
   #shopModal { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
     padding:20px; background:rgba(4,8,12,0.68); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }

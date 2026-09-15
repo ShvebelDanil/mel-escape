@@ -1,5 +1,6 @@
-// Визуальная модель скина «Тёмный друн» по концепту: чёрный пуховик с двумя
-// острыми «ушами» на капюшоне, глянцевые чёрные штаны, тяжёлые ботинки.
+// Визуальная модель скина «Тёмный друн» по концепту: чёрный пуховик с огромным
+// капюшоном-воротником из двух вертикальных пуховых валиков, глянцевые чёрные
+// штаны, тяжёлые ботинки.
 // Контракт возвращаемой ноды идентичен остальным mel*-visual.js:
 //   {root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary}
 //
@@ -7,6 +8,9 @@
 // legL/legR по 2 (однотонный ботинок + текстурная штанина) + тень = 9.
 // Стёжка пуховика сделана ГЕОМЕТРИЕЙ, а не текстурой: одноцветные детали
 // склеиваются в один меш бесплатно, а текстурный материал стоил бы ещё 3 вызова.
+// Уровень детализации сознательно держится на планке mel5-visual.js: мелкая
+// анатомия (ноздри, уголки губ, щетина, ушные раковины) убрана — на дистанции
+// камеры она не читается, но стоит мешей и треугольников.
 export function createMelVisual(THREE, GFX, options = {}) {
   const root = new THREE.Group();
   const put = (p, o, x = 0, y = 0, z = 0) => { o.position.set(x, y, z); p.add(o); return o; };
@@ -34,7 +38,6 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const metalDim = '#6e6e77';
   const skin = '#dcb193';
   const skinShade = '#bd8d72';
-  const skinDark = '#9a6c55';
   const hairCol = '#331a0c';
   const hairDark = '#1f0f06';
 
@@ -55,8 +58,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
     const rnd = (a, b) => a + rand() * (b - a);
 
     // Широкие мягкие «лужицы» отражения — крупная форма блика.
-    for (let i = 0; i < 22; i++) {
-      const x = rnd(0, S), y = rnd(0, S), r = rnd(18, 54);
+    // Мазков намеренно мало и они крупные: плотная сетка мелких заломов на
+    // штанах шумела и перетягивала внимание с силуэта.
+    for (let i = 0; i < 9; i++) {
+      const x = rnd(0, S), y = rnd(0, S), r = rnd(34, 78);
       const grd = g.createRadialGradient(x, y, 0, x, y, r);
       grd.addColorStop(0, 'rgba(96,98,112,' + rnd(.10, .20).toFixed(3) + ')');
       grd.addColorStop(1, 'rgba(96,98,112,0)');
@@ -65,19 +70,19 @@ export function createMelVisual(THREE, GFX, options = {}) {
     }
     // Острые рёбра заломов — светлые дуги поверх лужиц.
     g.lineCap = 'round';
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 9; i++) {
       const x = rnd(0, S), y = rnd(0, S);
-      g.strokeStyle = 'rgba(150,152,168,' + rnd(.10, .26).toFixed(3) + ')';
-      g.lineWidth = rnd(.8, 2.4);
+      g.strokeStyle = 'rgba(150,152,168,' + rnd(.08, .18).toFixed(3) + ')';
+      g.lineWidth = rnd(1.4, 3.0);
       g.beginPath(); g.moveTo(x, y);
       g.quadraticCurveTo(x + rnd(-40, 40), y + rnd(-34, 34), x + rnd(-70, 70), y + rnd(-60, 60));
       g.stroke();
     }
     // Тёмные «карманы» в глубине складок — чтобы блик читался как объём.
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 7; i++) {
       const x = rnd(0, S), y = rnd(0, S);
-      g.strokeStyle = 'rgba(0,0,0,' + rnd(.18, .38).toFixed(3) + ')';
-      g.lineWidth = rnd(1.2, 3.4);
+      g.strokeStyle = 'rgba(0,0,0,' + rnd(.16, .30).toFixed(3) + ')';
+      g.lineWidth = rnd(2.0, 4.0);
       g.beginPath(); g.moveTo(x, y);
       g.quadraticCurveTo(x + rnd(-30, 30), y + rnd(-26, 26), x + rnd(-56, 56), y + rnd(-48, 48));
       g.stroke();
@@ -85,7 +90,8 @@ export function createMelVisual(THREE, GFX, options = {}) {
 
     const t = new THREE.CanvasTexture(c);
     if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; else t.encoding = THREE.sRGBEncoding;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1.3, 1.6); t.anisotropy = 4;
+    // repeat < 1: узор растянут по штанине, блики получаются крупными пятнами.
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(.8, 1.0); t.anisotropy = 4;
     return new THREE.MeshLambertMaterial({ map: t });
   }
   const vinylMat = vinylMaterial();
@@ -136,11 +142,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
   // Резинка по низу куртки.
   put(inner, rounded(.685, .08, .42, cuffCol, .028), 0, .818, 0);
 
-  // Молния: один непрерывный рельеф по центру, чуть выступает над животом.
+  // Молния: одна полоса по центру + собачка. Отдельный металлический рельеф и
+  // язычок убраны — с игровой дистанции они сливались в одну линию.
   put(inner, box(.028, .70, .024, puffSeam), 0, 1.20, .242);
-  put(inner, box(.013, .68, .018, metalDim), 0, 1.20, .251);
-  put(inner, box(.024, .052, .020, metal), 0, 1.28, .257); // собачка
-  put(inner, box(.012, .042, .012, metal), 0, 1.240, .261); // язычок
+  put(inner, box(.024, .052, .022, metal), 0, 1.28, .254);
 
   // Косые карманы на нижней секции.
   for (const side of [-1, 1]) {
@@ -148,73 +153,93 @@ export function createMelVisual(THREE, GFX, options = {}) {
     p.rotation.z = side * .30;
   }
 
-  // ============================ КАПЮШОН ============================
-  // Капюшон закреплён на `inner`, а не на `headG`: настоящий капюшон не
-  // поворачивается вместе с головой, и так он не утяжеляет анимационный узел.
-  // Голова свободно «сидит» внутри рамки из валиков.
-  const hoodPut = (o, x, y, z) => put(inner, o, x, y, z);
+  // ======================= КАПЮШОН-ВОРОТНИК (два валика) =======================
+  // Это НЕ капюшон в обычном смысле: два огромных вертикальных пуховых валика
+  // растут прямо из воротника на плечах и поднимаются заметно выше макушки,
+  // образуя вокруг головы глубокую нишу. Та же чёрная стёганая ткань и тот же
+  // пухлый объём, что у куртки — валики читаются как продолжение одежды.
+  // Вся конструкция висит на `inner`, а не на `headG`: воротник — часть куртки,
+  // он не должен крутиться вместе с головой и утяжелять анимационный узел.
 
-  hoodPut(rounded(.60, .54, .32, puffBase, .10), 0, 1.87, -.19);             // затылочная скорлупа
-  hoodPut(rounded(.50, .19, .42, puffBase, .075), 0, 2.085, -.02);           // валик над лбом
-  hoodPut(rounded(.50, .17, .34, puffBase, .075), 0, 1.565, -.03);           // валик под подбородком
+  // Общая пухлая база поверх плеч, из которой «вырастают» оба валика.
+  put(inner, rounded(.95, .20, .50, puffBase, .085), 0, 1.58, -.02);
+  put(inner, box(.93, .020, .47, puffSeam), 0, 1.49, -.02);
+  // Задняя стенка воротника: замыкает нишу сзади и прячет затылок.
+  put(inner, rounded(.56, .34, .20, puffBase, .075), 0, 1.80, -.24);
+
+  // Секции валика: [y, ширина, высота, глубина, x, наклон наружу].
+  // Книзу валик широкий и тяжёлый, кверху слегка сужается и отваливается
+  // наружу — как набитая ткань, которую распирает наполнитель.
+  // Высота валика над воротником — ~0.52 (было 0.85, срезано на 40%): прежние
+  // валики торчали до Y≈2.47 и перекрывали обзор в забеге. Ширина и глубина
+  // оставлены прежними, чтобы капюшон не потерял массивность — он стал
+  // приземистее, а не тоньше. Верхняя точка теперь ~2.13, чуть ниже макушки.
+  const ROLL = [
+    [1.675, .300, .11, .52, .425, -.02],
+    [1.785, .295, .11, .50, .422, -.04],
+    [1.895, .275, .11, .47, .415, -.07],
+    [2.000, .245, .10, .43, .405, -.10]
+  ];
   for (const side of [-1, 1]) {
-    hoodPut(rounded(.145, .55, .44, puffBase, .06), side * .30, 1.83, .02);  // боковые валики у щёк
-    hoodPut(box(.032, .49, .34, hoodLine), side * .233, 1.83, .04);          // тёмная кромка изнутри — глубина
-  }
-  // Горизонтальная стёжка капюшона.
-  for (const y of [1.99, 1.70]) hoodPut(box(.575, .018, .38, puffSeam), 0, y, -.05);
-
-  // «Уши»: три подушки, каждая меньше и сильнее отклонена наружу — так пик
-  // получается стёганым и слегка изогнутым, как набитая ткань на концепте.
-  // Верхняя точка ~2.43 — вровень с ирокезом скина «Панк», чтобы силуэт
-  // не вылезал за кадр магазина и за верх экрана в забеге.
-  for (const side of [-1, 1]) {
-    const l1 = hoodPut(rounded(.215, .16, .27, puffBase, .055), side * .125, 2.125, -.01);
-    l1.rotation.z = side * -.06;
-    hoodPut(box(.155, .014, .205, puffSeam), side * .135, 2.198, -.018);
-
-    const l2 = hoodPut(rounded(.17, .14, .225, puffBase, .048), side * .152, 2.242, -.02);
-    l2.rotation.z = side * -.13;
-    hoodPut(box(.12, .013, .165, puffSeam), side * .167, 2.305, -.028);
-
-    const l3 = hoodPut(rounded(.125, .115, .175, puffBase, .038), side * .181, 2.332, -.032);
-    l3.rotation.z = side * -.21;
-
-    const l4 = hoodPut(rounded(.08, .085, .115, puffBase, .028), side * .208, 2.395, -.042);
-    l4.rotation.z = side * -.30;
+    for (const [y, w, h, d, x, tilt] of ROLL) {
+      const sec = put(inner, rounded(w, h, d, puffBase, Math.min(h, d) * .28), side * x, y, -.03);
+      sec.rotation.z = side * tilt;
+      // Стёжка по нижней кромке секции — она же стык между «подушками» валика.
+      put(inner, box(w * .92, .016, d * .92, puffSeam), side * x, y - h * .5, -.03);
+    }
+    // Закруглённая верхушка: наполнитель собирает ткань в мягкий клин.
+    const cap = put(inner, rounded(.205, .085, .36, puffBase, .040), side * .395, 2.092, -.035);
+    cap.rotation.z = side * -.14;
+    // Тёмная кромка по внутренней стенке ниши — лепит глубину там, куда ровный
+    // свет сцены не даёт собственной тени.
+    put(inner, box(.030, .45, .40, hoodLine), side * .288, 1.845, -.01);
   }
 
-  // Шея — почти полностью скрыта валиком, но закрывает щель при наклоне головы.
+  // Шея — почти полностью скрыта воротником, но закрывает щель при наклоне головы.
   put(inner, cyl(.086, .098, .16, skin, 10), 0, 1.60, 0);
 
   // ============================ ГОЛОВА ============================
   const headG = put(inner, new THREE.Group(), 0, 1.83, 0);
 
-  const skull = put(headG, sphere(1, skin, 18, 14), 0, .02, 0);
+  const skull = put(headG, sphere(1, skin, 16, 12), 0, .02, 0);
   skull.scale.set(.285, .322, .292);
   const jaw = put(headG, sphere(1, skin, 12, 10), 0, -.118, .024);
   jaw.scale.set(.225, .172, .214);
 
-  // Волосы: шапочка по черепу + короткая рваная чёлка на лбу (капюшон закрывает
-  // затылок и виски, поэтому дальше детализировать нечего).
-  const scalp = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 10, 0, Math.PI * 2, 0, Math.PI * .40), mat(hairCol));
+  // --- Волосы ---
+  // Основа — шапочка по форме черепа (без неё сквозь пряди светил скальп),
+  // поверх неё несколько крупных прядей, каждая посажена ровно на поверхность
+  // эллипсоида скальпа и чуть за неё выступает. Пряди намеренно крупные и их
+  // мало: мелкие блоки на чёрных волосах читались как россыпь точек, а не как
+  // причёска. Все координаты ниже — на поверхности скальпа (.291/.328/.298,
+  // центр y=.022), поэтому пряди лежат, а не висят в воздухе.
+  const scalp = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI * .44), mat(hairCol));
   scalp.scale.set(.291, .328, .298);
   put(headG, scalp, 0, .022, -.004);
-  // Чёлка одним косым куском плюс два виска: набор мелких блоков на лбу читался
-  // как россыпь светлых точек, а не как волосы.
-  const bang = put(headG, rounded(.345, .075, .10, hairCol, .03), 0, .152, .222);
-  bang.rotation.z = .10; bang.rotation.x = -.26;
-  for (const side of [-1, 1]) {
-    const tuft = put(headG, rounded(.10, .115, .105, hairDark, .032), side * .188, .122, .178);
-    tuft.rotation.z = side * .42;
-  }
 
-  // Уши прижаты капюшоном — только намёк на хрящ у кромки.
+  // Приподнятый чуб надо лбом — главный объём причёски.
+  const quiff = put(headG, rounded(.33, .09, .17, hairCol, .035), 0, .300, .130);
+  quiff.rotation.x = -.22;
+  // Две пряди по бокам макушки — расширяют силуэт и прячут стык чуба со скальпом.
   for (const side of [-1, 1]) {
-    const ear = put(headG, sphere(1, skin, 10, 8), side * .263, -.015, .005);
-    ear.scale.set(.046, .080, .042);
-    put(headG, sphere(1, skinShade, 8, 6), side * .275, -.018, .028).scale.set(.018, .036, .015);
+    const lock = put(headG, rounded(.15, .09, .26, hairCol, .035), side * .152, .288, .020);
+    lock.rotation.z = side * .30;
   }
+  // Затылочная прядь: в забеге камера смотрит герою в спину, и это самая
+  // заметная часть причёски.
+  const nape = put(headG, rounded(.28, .095, .18, hairCol, .035), 0, .272, -.150);
+  nape.rotation.x = .28;
+  // Виски — тёмным тоном, чтобы читались как тень у кромки волос.
+  for (const side of [-1, 1]) {
+    const temple = put(headG, rounded(.11, .14, .13, hairDark, .035), side * .238, .085, .090);
+    temple.rotation.z = side * .38;
+  }
+  // Чёлка одним косым куском, лежит на кромке шапочки.
+  const bang = put(headG, rounded(.345, .08, .10, hairCol, .03), 0, .140, .218);
+  bang.rotation.z = .10; bang.rotation.x = -.26;
+
+  // Ушей нет намеренно: они упираются во внутреннюю стенку валика и в кадре
+  // не появляются — два меша на сторону впустую.
 
   // --- Глаза ---
   // ez=.272 — поверхность черепа на этой высоте лежит примерно на z=.278, так что
@@ -224,53 +249,36 @@ export function createMelVisual(THREE, GFX, options = {}) {
 
     const socket = put(headG, sphere(1, skinShade, 10, 8), ex, ey - .006, ez - .016);
     socket.scale.set(.078, .050, .022);
-    // Мешки под глазами — характерная усталость с концепта.
-    const bag = put(headG, sphere(1, skinDark, 8, 6), ex, ey - .040, ez - .010);
-    bag.scale.set(.060, .018, .016);
 
     const eye = put(headG, sphere(1, '#f3eee4', 10, 8), ex, ey, ez);
     eye.scale.set(.052, .030, .022);
 
     put(headG, discZ(.023, '#6b6f68'), ex, ey, ez + .019);                       // радужка
     put(headG, discZ(.010, '#0a0b0a'), ex, ey, ez + .021);                       // зрачок
-    put(headG, discZ(.004, '#ffffff'), ex - .008, ey + .008, ez + .022);         // блик
 
     // Тяжёлое верхнее веко приспускает взгляд — на концепте он именно такой.
     const lid = put(headG, rounded(.068, .020, .026, skinShade, .006), ex, ey + .022, ez - .002);
     lid.rotation.z = side * .04;
-    put(headG, rounded(.058, .007, .020, skin, .003), ex, ey - .020, ez - .004); // нижнее веко
 
     // Брови сведены к центру — недовольный, «дедпановый» взгляд.
     const brow = put(headG, rounded(.086, .015, .020, hairDark, .005), ex, ey + .060, ez - .006);
     brow.rotation.z = side * .12;
   }
 
-  // --- Нос ---
+  // --- Нос: переносица + кончик, без крыльев и ноздрей ---
   put(headG, rounded(.027, .080, .024, skin, .010), 0, .026, .256);
-  const noseTip = put(headG, sphere(1, skin, 10, 8), 0, -.030, .270);
-  noseTip.scale.set(.039, .031, .035);
-  for (const side of [-1, 1]) {
-    put(headG, sphere(1, skin, 8, 6), side * .030, -.044, .260).scale.set(.021, .018, .022);
-    put(headG, sphere(1, skinDark, 6, 6), side * .027, -.057, .264).scale.set(.010, .007, .008);
-  }
+  const noseTip = put(headG, sphere(1, skin, 8, 6), 0, -.030, .270);
+  noseTip.scale.set(.042, .033, .036);
 
   // --- Рот: ровная, чуть опущенная линия ---
   const mouthY = -.122;
   put(headG, rounded(.072, .017, .022, skinShade, .008), 0, mouthY + .010, .254);
   put(headG, rounded(.066, .020, .024, skin, .009), 0, mouthY - .012, .256);
   put(headG, rounded(.062, .005, .018, '#7d5548', .002), 0, mouthY, .259);
-  for (const side of [-1, 1]) {
-    put(headG, sphere(1, skinShade, 6, 6), side * .041, mouthY + .002, .250).scale.set(.008, .010, .010);
-  }
 
-  // Подбородок вынесен вперёд, чтобы читался над валиком капюшона.
+  // Подбородок вынесен вперёд, чтобы читался над воротником.
   const chin = put(headG, sphere(1, skin, 10, 8), 0, -.203, .160);
   chin.scale.set(.100, .058, .060);
-  // Лёгкая щетина по челюсти.
-  for (const side of [-1, 1]) {
-    const st = put(headG, sphere(1, skinShade, 8, 6), side * .156, -.150, .146);
-    st.scale.set(.062, .052, .054);
-  }
 
   // ============================ РУКИ ============================
   function arm(x) {
@@ -292,7 +300,7 @@ export function createMelVisual(THREE, GFX, options = {}) {
     put(a, rounded(.04, .60, .20, puffSeam, .015), side * .098, -.31, 0);
 
     put(a, rounded(.155, .07, .17, cuffCol, .022), 0, -.662, 0); // манжета
-    for (let i = 0; i < 3; i++) put(a, box(.158, .009, .173, '#0d0d12'), 0, -.684 + i * .021, 0);
+    put(a, box(.158, .009, .173, '#0d0d12'), 0, -.684, 0);       // одна полоса резинки вместо трёх
 
     // Кисть.
     put(a, rounded(.15, .155, .15, skin, .024), 0, -.768, 0);
@@ -317,12 +325,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
     // Широкая глянцевая штанина + напуск на ботинок.
     put(l, rounded(.315, .70, .32, vinylMat, .05), 0, -.38, 0);
     put(l, rounded(.33, .155, .335, vinylMat, .06), 0, -.735, .01);
-    // Заломы: тонкие рёбра, ловящие свет на сгибе — ровно тот эффект, что даёт
-    // глянцевая плащёвка на концепте (на почти чёрной текстуре темнее уже некуда).
-    for (const yy of [-.21, -.45, -.61]) {
-      const cr = put(l, box(.306, .011, .311, vinylFold), 0, yy, .004);
-      cr.rotation.z = side * .05;
-    }
+    // Один залом на сгибе колена: ребро ловит свет ровно там, где глянцевая
+    // плащёвка ломается в жизни. Больше рёбер давали «гофру», а не ткань.
+    const crease = put(l, box(.306, .012, .311, vinylFold), 0, -.50, .004);
+    crease.rotation.z = side * .05;
 
     // Тяжёлый ботинок.
     const bY = -.845;
@@ -331,15 +337,18 @@ export function createMelVisual(THREE, GFX, options = {}) {
     put(l, rounded(.26, .085, .18, bootDark, .035), 0, bY - .012, .205);     // мыс
     put(l, box(.28, .045, .46, soleCol), 0, bY - .058, .06);                 // подошва
     put(l, box(.285, .020, .467, '#020203'), 0, bY - .086, .06);             // рант
-    for (let i = 0; i < 5; i++) put(l, box(.275, .011, .016, '#050507'), 0, bY - .090, -.115 + i * .09);
+    for (let i = 0; i < 3; i++) put(l, box(.275, .011, .016, '#050507'), 0, bY - .090, -.10 + i * .14);
     put(l, box(.245, .055, .11, '#030304'), 0, bY - .075, -.10);             // каблук
 
-    // Шнуровка.
-    for (let i = 0; i < 4; i++) {
-      const z = .175 - i * .04, y = bY + .050 - i * .013;
+    // Шнуровка: три перекладины вместо четырёх, люверсы только на двух верхних —
+    // ниже они закрыты напуском штанины.
+    for (let i = 0; i < 3; i++) {
+      const z = .175 - i * .05, y = bY + .050 - i * .016;
       put(l, box(.108, .012, .016, '#15151a'), 0, y, z);
-      put(l, sphere(.010, metalDim, 6, 4), -.053, y, z);
-      put(l, sphere(.010, metalDim, 6, 4), .053, y, z);
+      if (i < 2) {
+        put(l, sphere(.010, metalDim, 6, 4), -.053, y, z);
+        put(l, sphere(.010, metalDim, 6, 4), .053, y, z);
+      }
     }
     put(l, box(.040, .016, .09, '#0a0a0e'), side * .140, bY + .022, .03);    // язычок сбоку
 

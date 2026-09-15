@@ -39,12 +39,17 @@ export function createMelVisual(THREE, GFX, options = {}) {
   put(inner,rounded(.62,.58,.35,bodyMat),0,1.24,0);
   put(inner,rounded(.63,.085,.355,dark,.012),0,.96,0);
   // Ribbed jacket waistband and zip, not a bag or a strap.
-  for(const yy of [.951,.976]) put(inner,box(.63,.011,.359,cream),0,yy,0);
+  // Та же причина, что и у воротника: полоски резинки были ровно .63 в ширину,
+  // как и сама резинка, — грани совпадали. Делаем их чуть шире.
+  for(const yy of [.951,.976]) put(inner,box(.636,.011,.363,cream),0,yy,0);
   put(inner,box(.014,.51,.012,'#b8a886'),0,1.24,.191);
   put(inner,box(.035,.057,.019,'#d7c6a0'),0,1.445,.203);
   put(inner,rounded(.19,.14,.20,skin,.02),0,1.57,0);
   const collar=put(inner,rounded(.29,.115,.29,dark,.018),0,1.525,0);
-  put(collar,box(.29,.017,.295,cream),0,.035,0);
+  // Кремовая окантовка чуть ШИРЕ воротника (.302 против .29). Раньше её боковые
+  // грани лежали ровно в x=±.145 — там же, где грани воротника: две совпадающие
+  // плоскости давали z-fighting (мерцание по краям).
+  put(collar,box(.302,.017,.302,cream),0,.035,0);
   for(const side of [-1,1]) {
     const seam=put(inner,box(.115,.014,.015,cream),side*.19,1.08,.19);seam.rotation.z=side*.35;
   }
@@ -81,11 +86,47 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const armL=arm(-.39),armR=arm(.39);
   const diary=put(armR,GFX.buildDiaryMesh(),0,-.64,.14);diary.rotation.x=Math.PI/2;diary.visible=false;
   const headG=put(inner,new THREE.Group(),0,1.78,0);
-  const skull=put(headG,sphere(1,skin,16,12),0,.005,0);skull.scale.set(.245,.285,.233);
+  const skull=put(headG,sphere(1,skin,24,14),0,.005,0);skull.scale.set(.245,.285,.233);
   const jaw=put(headG,sphere(1,skin,12,8),0,-.115,.025);jaw.scale.set(.192,.155,.19);
-  // Close-shaved scalp, no original schoolboy hair geometry.
-  const scalp=new THREE.Mesh(new THREE.SphereGeometry(1,16,6,0,Math.PI*2,0,Math.PI*.43),mat('#8a7c6d'));
-  scalp.scale.set(.247,.286,.235);put(headG,scalp,0,.009,-.003);
+  // Волосы. Сплошная сферическая шапочка (как было) читается как надетая шапка:
+  // её нижняя кромка идёт на одной высоте по всей окружности и закрывает лоб.
+  // Поэтому строим свою сетку по эллипсоиду вокруг черепа с ПЕРЕМЕННОЙ линией
+  // низа: спереди она высокая (лоб открыт), на висках спускается к верхушке
+  // ушей, сзади уходит на затылок. Это один меш, один draw call.
+  // Толщина слоя волос переменная: .012 на макушке и всего .003 у нижней кромки.
+  // Постоянный отступ .012 по всей площади делал край «козырьком», стоящим в
+  // воздухе — особенно заметно на висках. Теперь кромка ложится на череп.
+  // Чтобы такой малый зазор не пробивался «проплешинами», череп уплотнён до
+  // 24 сегментов: его просадка между рёбрами упала с R*(1-cos 11.25°)=.0047
+  // до R*(1-cos 7.5°)=.0021, то есть меньше зазора даже у самой кромки.
+  const hairGeo = (() => {
+    const AZ = 36, TH = 10, bx = .245, by = .285, bz = .233;
+    const pos = new Float32Array(AZ * (TH + 1) * 3), idx = [];
+    for (let i = 0; i < AZ; i++) {
+      const a = i / AZ * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      // Линия низа причёски. База: .34pi спереди (ca=1), .52pi сзади (ca=-1).
+      // Плюс отдельный «клин» виска — лепесток вокруг азимута 60 градусов, то
+      // есть ПЕРЕД ухом: он спускает волосы к скуле и ломает ровную дугу, из-за
+      // которой причёска читалась шлемом. Ширина .26 подобрана так, чтобы у
+      // самого уха (90 градусов) клин уже сошёл на нет и не резал ушную раковину.
+      const da = (a < Math.PI ? a : Math.PI * 2 - a) - 1.05;
+      const tMax = Math.PI * (.43 - .09 * ca + .012 * sa * sa + .09 * Math.exp(-(da / .26) * (da / .26)));
+      for (let j = 0; j <= TH; j++) {
+        const u = j / TH, off = .012 - .009 * u * u;   // сходит на нет к кромке
+        const t = tMax * u, st = Math.sin(t), k = (i * (TH + 1) + j) * 3;
+        pos[k] = st * sa * (bx + off); pos[k + 1] = Math.cos(t) * (by + off); pos[k + 2] = st * ca * (bz + off);
+      }
+    }
+    for (let i = 0; i < AZ; i++) {
+      const c0 = i * (TH + 1), c1 = ((i + 1) % AZ) * (TH + 1); // замыкаем кольцо без шва
+      for (let j = 0; j < TH; j++) idx.push(c0 + j, c0 + j + 1, c1 + j + 1, c0 + j, c1 + j + 1, c1 + j);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  })();
+  put(headG, new THREE.Mesh(hairGeo, mat('#6e6052')), 0, .005, 0);
   for(const side of [-1,1]) {
     const ear=put(headG,sphere(1,skin,8,6),side*.245,-.02,0);ear.scale.set(.045,.076,.04);
     const inset=put(headG,sphere(1,'#bd8c73',8,6),side*.261,-.022,.025);inset.scale.set(.017,.035,.014);
@@ -96,8 +137,9 @@ export function createMelVisual(THREE, GFX, options = {}) {
     const brow=put(headG,rounded(.077,.018,.021,'#695b4c',.005),side*.085,.058,.223);brow.rotation.z=side*-.08;
     const cheek=put(headG,sphere(1,skin),side*.12,-.074,.187);cheek.scale.set(.061,.062,.033);
   }
-  const nose=put(headG,sphere(1,'#cfa084',8,6),0,-.043,.242);nose.scale.set(.033,.065,.042);
-  const nostril=put(headG,sphere(1,'#be8c73',8,6),0,-.083,.258);nostril.scale.set(.042,.019,.022);
+  // Нос — одна «картошка» вместо связки спинка + крылья/ноздри: меньше мешей
+  // и никаких стыков, которые раньше давали грязный силуэт.
+  const nose=put(headG,sphere(1,'#cfa084',10,8),0,-.055,.236);nose.scale.set(.044,.052,.049);
   put(headG,rounded(.104,.012,.015,'#916b5a',.004),0,-.149,.204);
   put(headG,rounded(.075,.011,.013,'#c18e77',.004),0,-.163,.202);
   const chin=put(headG,sphere(1,skin),0,-.2,.141);chin.scale.set(.089,.048,.049);

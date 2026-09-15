@@ -26,6 +26,14 @@ export function initShop(d) {
   on('skinPrevBtn', act(() => cycle(-1)));
   on('skinNextBtn', act(() => cycle(1)));
   on('skinAction', act(() => action()));
+  // Точки-индикаторы кликабельны: делегируем клик с контейнера, чтобы не
+  // навешивать слушатель на каждую точку при каждом refresh().
+  const dots = U.$('skinDots');
+  if (dots) dots.addEventListener('click', e => {
+    const i = Array.prototype.indexOf.call(dots.children, e.target);
+    if (i < 0) return;
+    act(() => goTo(i))();
+  });
   const mb = U.$('shopModalBtn'); if (mb) mb.addEventListener('click', () => { U.Sound.click(); closeModal(); });
   const mx = U.$('shopModalClose'); if (mx) mx.addEventListener('click', () => { U.Sound.click(); closeModal(); });
   const surface = window;
@@ -74,6 +82,15 @@ function setMode(next) {
 function cycle(dir) {
   const c = cat();
   index = (index + dir + c.list.length) % c.list.length;
+  c.preview(c.list[index].id);
+  refresh();
+}
+
+// Переход сразу к нужному элементу списка (клик по точке-индикатору).
+function goTo(i) {
+  const c = cat();
+  if (i === index || i < 0 || i >= c.list.length) return;
+  index = i;
   c.preview(c.list[index].id);
   refresh();
 }
