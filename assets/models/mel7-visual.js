@@ -1205,11 +1205,12 @@ export function createMelVisual(THREE, GFX, options = {}) {
   put(inner, box(.02, .1, .1, backpackDark), .16, 1.4, -.27); // zip pull tab strip
 
   // Bottom back pocket: a proportioned secondary pouch on the pack's lower
-  // outer face, mostly embedded into the pack body (no floating seam) with
-  // a slight proud bulge, plus a zip line and pull tab for readability.
-  put(inner, rounded(.24, .17, .06, backpackDark, .025), 0, 1.11, -.365);
-  put(inner, box(.16, .012, .02, strapCol), 0, 1.165, -.393);
-  put(inner, cyl(.014, .014, .03, buckleCol, 8), .08, 1.165, -.393).rotation.x = Math.PI / 2;
+  // outer face. Поднят так, чтобы низ кармана (y 1.075) лежал ВЫШЕ дна
+  // самого рюкзака (y 1.04) — иначе карман свисал и читался отдельной
+  // деталью. Утоплен в корпус на .022, наружу выступает лишь бугор.
+  put(inner, rounded(.24, .17, .06, backpackDark, .025), 0, 1.16, -.358);
+  put(inner, box(.16, .012, .02, strapCol), 0, 1.215, -.389);
+  put(inner, cyl(.014, .014, .03, buckleCol, 8), .08, 1.215, -.389).rotation.x = Math.PI / 2;
 
   for (const side of [-1, 1]) {
     const seam = put(inner, box(.1, .011, .011, shirtShade), side * .175, 1.09, .17); seam.rotation.z = side * .3;
@@ -1241,14 +1242,15 @@ export function createMelVisual(THREE, GFX, options = {}) {
     if (side < 0) {
       // Wristwatch on the left arm: the band wraps the wrist like a real
       // bracelet (kept at the cylinder's natural vertical axis so its
-      // radius pokes out past the forearm on every side), with a face
+      // radius .108 против полуглубины предплечья .0875 — браслет гарантированно
+      // выступает наружу и не тонет в руке), with a face
       // plate mounted flush on the front so it doesn't get swallowed by
       // the arm geometry.
-      const band = put(a, cyl(.092, .092, .05, watchCol, 14), 0, -.545, 0);
-      const face = put(a, cyl(.05, .05, .022, watchFace, 14), 0, -.545, .097);
+      const band = put(a, cyl(.108, .108, .052, watchCol, 14), 0, -.545, 0);
+      const face = put(a, cyl(.05, .05, .024, watchFace, 14), 0, -.545, .118);
       face.rotation.x = Math.PI / 2;
-      put(a, cyl(.038, .038, .006, watchCol, 14), 0, -.545, .109).rotation.x = Math.PI / 2;
-      put(a, box(.014, .022, .016, watchCol), 0, -.505, .097); // crown nub
+      put(a, cyl(.038, .038, .006, watchCol, 14), 0, -.545, .132).rotation.x = Math.PI / 2;
+      put(a, box(.014, .022, .016, watchCol), 0, -.505, .118); // crown nub
     } else {
       put(a, rounded(.145, .05, .165, skin, .016), 0, -.548, 0); // plain wrist joint
     }
@@ -1261,15 +1263,64 @@ export function createMelVisual(THREE, GFX, options = {}) {
 
   // ---- head ----
   const headG = put(inner, new THREE.Group(), 0, 1.79, 0);
-  const skull = put(headG, sphere(1, skin, 16, 12), 0, .008, 0); skull.scale.set(.245, .29, .235);
+  const skull = put(headG, sphere(1, skin, 24, 14), 0, .008, 0); skull.scale.set(.245, .29, .235);
   const jaw = put(headG, sphere(1, skin, 12, 8), 0, -.12, .028); jaw.scale.set(.185, .155, .185);
-  // Scalp shell: kept as ONE continuous mesh anchored at the same base
-  // latitude as before, just given a touch more clearance over the skull
-  // (subtle extra volume) and slightly wider coverage so it reads as a
-  // full short haircut rather than a painted-on cap.
-  const scalp = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * .43), hairMat);
-  scalp.scale.set(.261, .305, .251); put(headG, scalp, 0, .021, -.005);
-  put(headG, box(.006, .16, .17, hairCol), .028, .11, .04).rotation.z = .12; // side-part line
+  // Волосы — та же причёска, что в mel-visual.js. Сплошная сферическая шапочка
+  // читалась как надетая шапка: её нижняя кромка шла на одной высоте по всей
+  // окружности и закрывала лоб. Поэтому строим свою сетку по эллипсоиду вокруг
+  // черепа с ПЕРЕМЕННОЙ линией низа: спереди она высокая (лоб открыт), на висках
+  // спускается к скуле, сзади уходит на затылок. Это один меш, один draw call.
+  // Толщина слоя переменная: .012 на макушке и .003 у кромки. Постоянный отступ
+  // делал край «козырьком», стоящим в воздухе, — заметнее всего на висках.
+  // Череп уплотнён до 24 сегментов: просадка между рёбрами упала с
+  // R*(1-cos 11.25°)=.0047 до R*(1-cos 7.5°)=.0021, т.е. стала меньше зазора
+  // даже у самой кромки — кожа не пробивается «проплешинами» сквозь тонкий край.
+  // UV обязательны: материал волос текстурный, и bakeStatic склеивает такие
+  // детали только при наличии uv. v=1 на макушке, v=0 у кромки — ровно вдоль
+  // вертикального градиента текстуры.
+  const hairGeo = (() => {
+    // Колонок AZ+1: последняя дублирует первую, но с u=1 вместо 0. Без дубля
+    // замыкающий квад прогонял текстуру задом наперёд через весь атлас — на
+    // макушке был виден шов. Нормали шовных колонок потом усредняются.
+    const AZ = 36, TH = 10, bx = .245, by = .29, bz = .235;
+    const CN = (AZ + 1) * (TH + 1);
+    const pos = new Float32Array(CN * 3), uvs = new Float32Array(CN * 2), idx = [];
+    for (let i = 0; i <= AZ; i++) {
+      const a = (i % AZ) / AZ * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      // Линия низа причёски. База: .34pi спереди (ca=1), .52pi сзади (ca=-1).
+      // Плюс «клин» виска — лепесток вокруг азимута 60 градусов, то есть ПЕРЕД
+      // ухом: он спускает волосы к скуле и ломает ровную дугу, из-за которой
+      // причёска читалась шлемом. Ширина .26 подобрана так, чтобы у самого уха
+      // (90 градусов) клин уже сошёл на нет и не резал ушную раковину.
+      const da = (a < Math.PI ? a : Math.PI * 2 - a) - 1.05;
+      const tMax = Math.PI * (.43 - .09 * ca + .012 * sa * sa + .09 * Math.exp(-(da / .26) * (da / .26)));
+      for (let j = 0; j <= TH; j++) {
+        const u = j / TH, off = .012 - .009 * u * u;   // сходит на нет к кромке
+        const t = tMax * u, st = Math.sin(t), n = i * (TH + 1) + j, k = n * 3;
+        pos[k] = st * sa * (bx + off); pos[k + 1] = Math.cos(t) * (by + off); pos[k + 2] = st * ca * (bz + off);
+        uvs[n * 2] = i / AZ; uvs[n * 2 + 1] = 1 - u;
+      }
+    }
+    for (let i = 0; i < AZ; i++) {
+      const c0 = i * (TH + 1), c1 = (i + 1) * (TH + 1);
+      for (let j = 0; j < TH; j++) idx.push(c0 + j, c0 + j + 1, c1 + j + 1, c0 + j, c1 + j + 1, c1 + j);
+    }
+    const hg = new THREE.BufferGeometry();
+    hg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    hg.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    hg.setIndex(idx); hg.computeVertexNormals();
+    // Первая и последняя колонки лежат в одной точке, но каждая получила нормали
+    // только со своей стороны — усредняем, иначе по шву была бы полоса освещения.
+    const nr = hg.attributes.normal.array;
+    for (let j = 0; j <= TH; j++) {
+      const a = j * 3, b = (AZ * (TH + 1) + j) * 3;
+      const nx = nr[a] + nr[b], ny = nr[a + 1] + nr[b + 1], nz = nr[a + 2] + nr[b + 2];
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nr[a] = nr[b] = nx / l; nr[a + 1] = nr[b + 1] = ny / l; nr[a + 2] = nr[b + 2] = nz / l;
+    }
+    return hg;
+  })();
+  put(headG, new THREE.Mesh(hairGeo, hairMat), 0, .008, 0);
   for (const side of [-1, 1]) {
     const ear = put(headG, sphere(1, skin, 8, 6), side * .248, -.024, 0); ear.scale.set(.045, .078, .04);
     put(headG, sphere(1, '#bd8c73', 8, 6), side * .264, -.026, .025).scale.set(.017, .034, .014);
@@ -1280,8 +1331,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
     const brow = put(headG, rounded(.078, .018, .018, '#3a2916', .005), side * .087, .058, .227); brow.rotation.z = side * -.08;
     const cheek = put(headG, sphere(1, skin), side * .118, -.07, .19); cheek.scale.set(.056, .058, .03);
   }
-  const nose = put(headG, sphere(1, '#cfa084', 8, 6), 0, -.045, .248); nose.scale.set(.032, .062, .04);
-  put(headG, sphere(1, '#be8c73', 8, 6), 0, -.084, .263).scale.set(.04, .018, .02);
+  // Нос — одна «картошина»: раньше два разных эллипсоида (узкий длинный +
+  // плоский снизу) стыковались видимым уступом. Сегментов больше (12x9),
+  // чтобы шар читался круглым, а не гранёным — деталь крупная и в центре лица.
+  const nose = put(headG, sphere(1, '#cfa084', 12, 9), 0, -.05, .236); nose.scale.set(.055, .047, .046);
   put(headG, rounded(.1, .012, .014, '#916b5a', .004), 0, -.152, .208);
   put(headG, rounded(.072, .01, .012, '#c18e77', .004), 0, -.165, .205);
   const chin = put(headG, sphere(1, skin), 0, -.2, .143); chin.scale.set(.084, .046, .046);
