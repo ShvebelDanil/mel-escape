@@ -5,8 +5,20 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const root = new THREE.Group();
   const put = (p, o, x = 0, y = 0, z = 0) => { o.position.set(x, y, z); p.add(o); return o; };
 
+  // Общий масштаб фигуры. Панк строился заметно крупнее остальных скинов и в игре
+  // выделялся размером. Уменьшаем модель целиком, не трогая ни одной детали: масштаб
+  // висит на pivot, а его высота опускается до .92 * SCALE — тогда точка вращения
+  // сальто остаётся на той же ОТНОСИТЕЛЬНОЙ высоте, а ступни по-прежнему стоят ровно
+  // на земле (игра каждый кадр ставит inner в y = -0.92, см. main.js, поэтому
+  // масштабировать сам inner нельзя).
+  // Коэффициент считаем по макушке ЧЕРЕПА, а не по габариту: ирокез добавляет ~.35
+  // высоты и по общему bounding box панк кажется выше, чем он есть. При .87 темя
+  // оказывается на y≈1.90 — ровно как у mel-visual и школьников.
+  const SCALE = .87;
+
   // Pivot structure kept identical to the original buildMel().
-  const pivot = put(root, new THREE.Group(), 0, .92, 0);
+  const pivot = put(root, new THREE.Group(), 0, .92 * SCALE, 0);
+  pivot.scale.setScalar(SCALE);
   const inner = put(pivot, new THREE.Group(), 0, -.92, 0);
 
   // Palette.
@@ -163,14 +175,22 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const jacketBelly = put(inner, sphere(1, tee, 18, 16), 0, 1.05, .15);
   jacketBelly.scale.set(.32, .24, .20);
 
-  put(inner, box(.78, .055, .44, leatherHighlight), 0, .93, -.01);
+  // Поясная планка куртки. z-центр обязан совпадать с центром корпуса (-.02), а не
+  // быть -.01: при -.01 задняя грань планки ложилась ровно в z=-.23 — туда же, где
+  // задняя грань корпуса rounded(.76,.70,.42). Две совпадающие плоскости давали
+  // z-fighting — мерцающую полосу на спине под курткой. Теперь планка выступает на
+  // .01 и спереди, и сзади (столько же, сколько по бокам: .78 против .76 по X).
+  put(inner, box(.78, .055, .44, leatherHighlight), 0, .93, -.02);
 
   // Lapels.
   function lapel(side) {
     const g = new THREE.Group();
     const band = put(g, rounded(.12, .22, .44, leatherMat, .02), 0, 0, 0);
     band.rotation.z = side * .22;
-    const tip = put(g, rounded(.10, .16, .44, leatherMat, .015), side * .07, -.10, 0);
+    // Глубина "языка" на .01 меньше полосы: при одинаковой .44 их передние грани
+    // ложились в один z=.235 и давали z-fighting на груди (детали из одного
+    // leatherMat, но с разной UV-развёрткой — мерцала текстура кожи).
+    const tip = put(g, rounded(.10, .16, .43, leatherMat, .015), side * .07, -.10, 0);
     tip.rotation.z = side * -.18;
     return put(inner, g, side * .24, 1.60, .05);
   }
@@ -360,7 +380,9 @@ export function createMelVisual(THREE, GFX, options = {}) {
     put(a, box(.016, .58, .075, leatherHighlight), side * .145, -.24, 0);
 
     put(a, rounded(.25, .11, .25, '#26262a', .015), 0, -.59, 0);
-    put(a, box(.252, .016, .252, '#0f0f11'), 0, -.55, 0);
+    // Опущена на .002: нижняя грань манжеты совпадала с нижней гранью поясной
+    // планки куртки (обе в y=.9025) на узкой полоске, где рука заходит под полу.
+    put(a, box(.252, .016, .252, '#0f0f11'), 0, -.552, 0);
 
     put(a, rounded(.175, .175, .175, skin, .024), 0, -.71, 0);
     for (let i = -1; i <= 1; i++) {
@@ -399,7 +421,11 @@ export function createMelVisual(THREE, GFX, options = {}) {
     put(l, rounded(.275, .10, .52, boot, .020), 0, bootY, .07);
     put(l, rounded(.265, .085, .48, '#15151a', .016), 0, bootY - .01, .075);
 
-    put(l, rounded(.275, .07, .22, '#0a0a0c', .022), 0, bootY - .02, .22);
+    // Резиновый носок. Габариты специально не совпадают с голенищем
+    // rounded(.275,.10,.52): раньше ширина совпадала (.275) и передняя грань тоже
+    // приходилась ровно в z=.33 — три совпадающие плоскости на носке. Теперь носок
+    // на .008 шире и на .005 выступает вперёд, т.е. читается как накладка.
+    put(l, rounded(.283, .07, .22, '#0a0a0c', .022), 0, bootY - .02, .225);
 
     put(l, box(.285, .035, .53, bootSole), 0, bootY - .065, .07);
     put(l, box(.289, .018, .535, '#050505'), 0, bootY - .088, .07);
@@ -428,7 +454,8 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const legR = leg(.19);
 
   // --- Shadow disc ---
-  const shadow = GFX.shadowDisc(root, .62, GFX.SHADOW_MAT_CHAR);
+  // Тень лежит на root (вне pivot), поэтому её радиус уменьшаем тем же коэффициентом вручную.
+  const shadow = GFX.shadowDisc(root, .62 * SCALE, GFX.SHADOW_MAT_CHAR);
 
   return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
 }

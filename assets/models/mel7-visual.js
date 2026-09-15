@@ -1070,7 +1070,15 @@
 export function createMelVisual(THREE, GFX, options = {}) {
   const root = new THREE.Group();
   const put = (p, o, x = 0, y = 0, z = 0) => { o.position.set(x, y, z); p.add(o); return o; };
-  const pivot = put(root, new THREE.Group(), 0, .92, 0);
+  // Ступни модели заканчивались не на полу, а на y=.186: группа ноги висит внутри
+  // inner на y=.92, а самая нижняя деталь обуви не достаёт до -.92. Скин из-за этого
+  // "летал" над собственной тенью (тень лежит на root в y=.02, пол сцены — y=0), тогда
+  // как модели с более длинными ногами стояли ровно. Опускаем фигуру целиком высотой
+  // pivot: ступни встают на пол, а точка вращения сальто остаётся в той же точке ТЕЛА
+  // (pivot едет вниз вместе с фигурой). Двигать inner нельзя — игра переписывает его
+  // позицию каждый кадр (main.js/shop.js ставят inner.position.y = -0.92 + ...).
+  const GROUND_FIX = .186;
+  const pivot = put(root, new THREE.Group(), 0, .92 - GROUND_FIX, 0);
   const inner = put(pivot, new THREE.Group(), 0, -.92, 0);
 
   const skin = '#d7a883';

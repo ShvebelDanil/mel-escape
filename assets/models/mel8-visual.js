@@ -15,7 +15,17 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const root = new THREE.Group();
   const put = (p, o, x = 0, y = 0, z = 0) => { o.position.set(x, y, z); p.add(o); return o; };
 
-  const pivot = put(root, new THREE.Group(), 0, .92, 0);
+  // Общий масштаб фигуры. Пуховик строился крупнее остальных скинов (габарит
+  // 2.19 x 1.15 против 2.08 x 0.99 у mel-visual) и в игре выделялся размером.
+  // Уменьшаем модель целиком, не трогая ни одной детали: масштаб висит на
+  // pivot, а его высота опускается до .92 * SCALE — точка вращения сальто
+  // остаётся на той же ОТНОСИТЕЛЬНОЙ высоте, а ступни стоят ровно на земле
+  // (игра каждый кадр ставит inner в y = -0.92, см. main.js, поэтому
+  // масштабировать сам inner нельзя).
+  const SCALE = .90;
+
+  const pivot = put(root, new THREE.Group(), 0, .92 * SCALE, 0);
+  pivot.scale.setScalar(SCALE);
   const inner = put(pivot, new THREE.Group(), 0, -.92, 0);
 
   // --- Палитра ---
@@ -357,7 +367,8 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const legL = leg(-.165);
   const legR = leg(.165);
 
-  const shadow = GFX.shadowDisc(root, .62, GFX.SHADOW_MAT_CHAR);
+  // Тень лежит на root (вне pivot), поэтому её радиус уменьшаем тем же коэффициентом вручную.
+  const shadow = GFX.shadowDisc(root, .62 * SCALE, GFX.SHADOW_MAT_CHAR);
 
   return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
 }
