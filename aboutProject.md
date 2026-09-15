@@ -161,11 +161,11 @@
 ### source/pets.js — реестр питомцев-компаньонов
 Структурно идентичен `skins.js`, но для питомцев, следующих за игроком.
 
-- **`PETS[]`** — `{id, name, price, desc, build}`. Первый элемент `none` (`build: null`) — «без питомца», всегда доступен. Сейчас: `cat` → `createPetVisual` из `assets/models/pet-cat-visual.js` (5 монет).
+- **`PETS[]`** — `{id, name, price, desc, build}`. Первый элемент `none` (`build: null`) — «без питомца», всегда доступен. Сейчас: `cat` → `createPetVisual` из `assets/models/pet-cat-visual.js` (5 монет), `catost` → трехцветный округлый кот «Котость» из `assets/models/pet-catost-visual.js` (8 монет), `rabbitBurmaldaets` → толстый заяц «Заяц Бурмалдаец» из `assets/models/pet-rabbit-burmaldaets-visual.js` (10 монет).
 - `buildPetNode(id)` — возвращает `null` для `build: null` (в `main.js:applyPlayerPet` это означает «убрать питомца со сцены»); кэш построенных нод аналогично `skins.js`.
 - `findPet/isOwned/selectedId/buy/select` — та же семантика, что и в `skins.js`.
 
-Связан с: `main.js:applyPlayerPet/updatePet`, `shop.js` (вкладка «Питомцы»), `assets/models/pet-cat-visual.js`.
+Связан с: `main.js:applyPlayerPet/updatePet`, `shop.js` (вкладка «Питомцы»), `assets/models/pet-cat-visual.js`, `assets/models/pet-catost-visual.js`, `assets/models/pet-rabbit-burmaldaets-visual.js`.
 
 ---
 
@@ -176,7 +176,7 @@
 - **`open(initialMode)/close()`** — переключают `G.state` (в `main.js`) на `'shop'`, скрывают бабушку, ставят превью текущего выбранного скина/питомца.
 - `cat()` — возвращает текущий «каталог» (набор функций `SK.*` или `PT.*`) в зависимости от `mode` (`'skins'|'pets'`) — паттерн избегает дублирования UI-логики между двумя типами товаров.
 - `cycle(dir)` — пролистывание карусели (кольцевой индекс), `action()` — покупка/выбор с учётом баланса `U.save.currency`, `showModal/closeModal` — модалка успеха/ошибки покупки («недостаточно чекушек»).
-- **`update(dt)`** — вызывается каждый кадр из `main.js:loop()` пока `G.state==='shop'`: крутит превью-модель (idle-анимация покачивания рук/ног через `U.damp`), ставит камеру в режим витрины (узкий FOV, фиксированная точка обзора на `SHOP_Z`).
+- **`update(dt)`** — вызывается каждый кадр из `main.js:loop()` пока `G.state==='shop'`: крутит превью-модель (idle-анимация покачивания рук/ног через `U.damp`), ставит камеру в режим витрины (узкий FOV, фиксированная точка обзора на `SHOP_Z`). Превью можно вращать на 360° перетаскиванием по canvas: общий `previewYaw` применяется к Мэлу и питомцу, а idle-покачивание уступает ручному вращению на время drag.
 
 Связан с: `main.js` (init/update/state), `skins.js`, `pets.js`, `utils.js` (UI/Sound/save).
 
@@ -216,6 +216,8 @@ createMelVisual(THREE, GFX, options = {})
 | **mel4-visual.js** | 🧟 не используется | Черновик с комментариями на русском (пометка `// KIMI` — другая генерация), своя палитра. Не импортируется нигде. |
 | **granny-visual.js** | ✅ активен (антагонист) | `createGrannyVisual(THREE, GFX, options={})` → `{root, pivot, inner, legL, legR, armL, armR, headG, shadow, bat}` (вместо `diary` — `bat`, предмет в руке). Комбинация из двух черновиков: тело/платье/бита — из одного варианта, голова/лицо — из другого (см. заголовочный комментарий файла). Используется в `entities.js:buildGranny()`. |
 | **pet-cat-visual.js** | ✅ активен (питомец `cat`, 5💰) | `createPetVisual(THREE, GFX)` → `{root, bob, headG, tailPivot, legs, shadow}` — отдельный, более простой контракт (нет ног как рычагов бега, только `legs`-группа и `bob`/`tailPivot` для покачивания и хвоста). Используется в `pets.js`, анимируется в `main.js:updatePet`. |
+| **pet-catost-visual.js** | ✅ активен (питомец `catost`, 8💰) | Округлый трехцветный low-poly кот по референсу: широкое тело с UV-текстурой calico-пятен, белая грудь/морда, плоские лицевые круги глаз без профильных выступов, короткие лапы и поднятый хвост. Сохраняет контракт `pet-cat-visual.js`, используется в `pets.js`. |
+| **pet-rabbit-burmaldaets-visual.js** | ✅ активен (питомец `rabbitBurmaldaets`, 10💰) | Очень толстый low-poly заяц по референсу: шарообразное белое тело, человеческая гладкая лицевая маска с маленькими глазами, носом и прямым покер-фейсом, длинные розовые заячьи уши, короткие лапы и круглый хвост. Сохраняет контракт `pet-cat-visual.js`, используется в `pets.js`. |
 
 ---
 

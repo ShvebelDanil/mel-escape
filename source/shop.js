@@ -8,6 +8,7 @@ import * as PT from './pets.js';
 const SHOP_Z = -7.4, CAM_Z = -2.95;
 
 let deps = null, mode = 'skins', index = 0, modalOpen = false;
+let dragActive = false, dragX = 0, previewYaw = 0;
 
 function cat() {
   return mode === 'pets'
@@ -27,12 +28,24 @@ export function initShop(d) {
   on('skinAction', act(() => action()));
   const mb = U.$('shopModalBtn'); if (mb) mb.addEventListener('click', () => { U.Sound.click(); closeModal(); });
   const mx = U.$('shopModalClose'); if (mx) mx.addEventListener('click', () => { U.Sound.click(); closeModal(); });
+  const surface = window;
+  if (surface) {
+    surface.addEventListener('pointerdown', e => { dragActive = true; dragX = e.clientX; });
+    surface.addEventListener('pointermove', e => {
+      if (!dragActive) return;
+      previewYaw += (e.clientX - dragX) * 0.012;
+      dragX = e.clientX;
+    });
+    surface.addEventListener('pointerup', () => { dragActive = false; });
+    surface.addEventListener('pointercancel', () => { dragActive = false; });
+  }
 }
 
 export function open(initialMode) {
   mode = initialMode === 'pets' ? 'pets' : 'skins';
   const c = cat();
   index = Math.max(0, c.list.findIndex(s => s.id === c.selectedId()));
+  previewYaw = 0;
   closeModal();
   deps.setPreviewSkin(SK.selectedId());
   deps.setPreviewPet(PT.selectedId());
@@ -141,7 +154,7 @@ export function update(dt) {
   const now = performance.now();
   n.root.visible = mode === 'skins';
   n.root.position.set(0, 0, SHOP_Z);
-  n.root.rotation.set(0, Math.sin(now / 1600) * 0.22, 0);
+  n.root.rotation.set(0, previewYaw + (dragActive ? 0 : Math.sin(now / 1600) * 0.22), 0);
   n.pivot.rotation.x = 0;
   n.inner.rotation.set(0, 0, 0);
   n.inner.scale.set(1, 1, 1);
@@ -159,7 +172,7 @@ export function update(dt) {
     pn.root.visible = mode === 'pets';
     pn.root.position.set(0, 0, SHOP_Z);
     pn.root.scale.setScalar(1.7);
-    pn.root.rotation.y = Math.sin(now / 1600) * 0.22;
+    pn.root.rotation.y = previewYaw + (dragActive ? 0 : Math.sin(now / 1600) * 0.22);
     pn.bob.position.y = Math.sin(now / 450) * 0.03;
     pn.tailPivot.rotation.y = Math.sin(now / 300) * 0.35;
     pn.shadow.position.y = 0.02;
