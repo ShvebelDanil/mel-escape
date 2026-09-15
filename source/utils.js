@@ -156,6 +156,8 @@ const LEAD_SEQ = [440, 0, 523.25, 0, 587.33, 523.25, 440, 0, 392, 0, 440, 0, 523
 const STEP_DUR = 60 / 138 / 2;
 export const Sound = {
   ctx: null, master: null, musicGain: null, sfxGain: null, noiseBuf: null, musicOn: true, sfxOn: true, paused: false, step: 0, nextNote: 0, timer: null,
+  // Банк семплов из assets/sounds/ (source/audio.js). Пока он null — играет только синтез ниже.
+  bank: null,
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended' && !this.paused) { try { this.ctx.resume(); } catch (e) {} } return true; }
     try {
@@ -163,10 +165,13 @@ export const Sound = {
       this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.16; this.musicGain.connect(this.master);
       this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.5; this.sfxGain.connect(this.master);
-      this.applyToggles(); this.startMusic(); return true;
+      this.applyToggles();
+      // Банк сам решит, что играть: файл music_*.mp3 или синтезированный чиптюн.
+      if (this.bank) this.bank.attach(); else this.startSynthMusic();
+      return true;
     } catch (e) { return false; }
   },
-  applyToggles() { if (!this.ctx) return; this.musicGain.gain.value = this.musicOn ? 0.16 : 0; this.sfxGain.gain.value = this.sfxOn ? 0.5 : 0; },
+  applyToggles() { if (!this.ctx) return; this.musicGain.gain.value = this.musicOn ? 0.16 : 0; this.sfxGain.gain.value = this.sfxOn ? 0.5 : 0; if (this.bank) this.bank.toggles(); },
   osc(f0, f1, dur, type, vol, t, out) {
     const o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t);
     if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
@@ -182,14 +187,28 @@ export const Sound = {
     g.gain.setValueAtTime(vol, t); g.gain.linearRampToValueAtTime(0, t + dur);
     src.connect(f); f.connect(g); g.connect(this.sfxGain); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
   },
-  jump() { this.tone(300, 640, 0.2, 'square', 0.12); }, land() { this.noise(0.12, 0.1, 500); }, roll() { this.noise(0.28, 0.14, 700); },
-  flip() { this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
-  coin() { const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
-  lane() { this.noise(0.09, 0.06, 1400); }, stumble() { this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
-  crash() { this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
-  growl() { const t = this.ctx ? this.ctx.currentTime : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
-  click() { this.tone(650, 650, 0.05, 'sine', 0.1); }, pauseAll() { this.paused = true; if (this.ctx) try { this.ctx.suspend(); } catch (e) {} }, resumeAll() { this.paused = false; if (this.ctx) try { this.ctx.resume(); } catch (e) {} },
-  startMusic() { if (this.timer || !this.ctx) return; this.nextNote = this.ctx.currentTime + 0.1; this.step = 0; this.timer = setInterval(() => this.schedule(), 110); },
+  // Каждый игровой звук сперва ищет свой семпл в банке (assets/sounds/<key>.mp3),
+  // и только если файла нет — играет старый синтезированный вариант.
+  sfx(key) { return this.bank ? this.bank.play(key) : false; },
+  jump() { if (this.sfx('jump')) return; this.tone(300, 640, 0.2, 'square', 0.12); },
+  land() { if (this.sfx('land')) return; this.noise(0.12, 0.1, 500); },
+  roll() { if (this.sfx('roll')) return; this.noise(0.28, 0.14, 700); },
+  flip() { if (this.sfx('flip')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
+  coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
+  lane() { if (this.sfx('lane')) return; this.noise(0.09, 0.06, 1400); },
+  stumble() { if (this.sfx('warn')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
+  crash() { if (this.sfx('death')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
+  growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
+  click() { if (this.sfx('click')) return; this.tone(650, 650, 0.05, 'sine', 0.1); },
+  denied() { if (this.sfx('ui_denied')) return; this.stumble(); },
+  // Шаг и голос питомца существуют только как семплы — без файла просто молчат.
+  footstep() { this.sfx('step'); },
+  petVoice(id) { this.sfx('pet_' + id); },
+  setMusic(name) { if (this.bank) this.bank.setMusic(name); },
+  pauseAll() { this.paused = true; if (this.bank) this.bank.pause(); if (this.ctx) try { this.ctx.suspend(); } catch (e) {} },
+  resumeAll() { this.paused = false; if (this.ctx) try { this.ctx.resume(); } catch (e) {} if (this.bank) this.bank.resume(); },
+  startSynthMusic() { if (this.timer || !this.ctx) return; this.nextNote = this.ctx.currentTime + 0.1; this.step = 0; this.timer = setInterval(() => this.schedule(), 110); },
+  stopSynthMusic() { if (!this.timer) return; clearInterval(this.timer); this.timer = null; },
   mNote(f, t, dur, type, vol) { this.osc(f, 0, dur, type, vol, t, this.musicGain); },
   schedule() {
     if (!this.ctx) return; const now = this.ctx.currentTime;

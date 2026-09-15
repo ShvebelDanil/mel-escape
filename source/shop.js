@@ -12,7 +12,8 @@ let dragActive = false, dragX = 0, previewYaw = 0;
 
 function cat() {
   return mode === 'pets'
-    ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, select: PT.select, preview: id => deps.setPreviewPet(id) }
+    // при перелистывании питомца даём послушать его голос (assets/sounds/pet_<id>.mp3)
+    ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, select: PT.select, preview: id => { deps.setPreviewPet(id); U.Sound.petVoice(id); } }
     : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, select: SK.select, preview: id => deps.setPreviewSkin(id) };
 }
 
@@ -104,7 +105,7 @@ function action() {
   }
   if (U.save.currency < s.price) {
     showModal('err', 'НЕДОСТАТОЧНО ЧЕКУШЕК!', 'Для покупки ' + noun + ' нужно ещё ' + (s.price - U.save.currency) + ' чекушек.', 'ПОНЯТНО');
-    U.Sound.stumble();
+    U.Sound.denied();
     return;
   }
   if (c.buy(s.id)) {

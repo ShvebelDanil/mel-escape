@@ -5,12 +5,13 @@ import * as LVL from './level.js';
 import * as SK from './skins.js';
 import * as PT from './pets.js';
 import * as SHOP from './shop.js';
+import * as AUD from './audio.js';
 
 const COMBO_WINDOW = 1.3;
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spinDir: 0, spinT: 0, spinDur: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
-export const pet = { node: null, x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0 };
+export const pet = { node: null, id: '', x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0, voiceT: 0 };
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
 
 let deskScene = null, segments = [];
@@ -20,7 +21,8 @@ const PET_FOLLOW_X = 8; // скорость догона питомца до р�
 const PET_MENU_X = 0.75, PET_MENU_Z = -0.7; // смещение питомца рядом с Мэлом в сцене главного меню (подобрано визуально: не перекрывает Мэла и кнопки)
 const PET_JUMP_T = 2 * U.JUMP_V / U.GRAVITY; // время полёта прыжка — та же физика, что и у игрока
 const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. высота прыжка питомца
-const TAU = Math.PI * 2;
+const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
+const PET_VOICE_MIN = 8, PET_VOICE_MAX = 14; // разброс паузы между репликами питомца на бегу
 const FLIP_TIME = PET_JUMP_T * 0.78; // оборот заметно короче полёта — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
 
@@ -102,7 +104,7 @@ function caught() {
 }
 
 function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; SHOP.refreshCurrency(); }
-function showMenu() { setupMenuScene(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); }
+function showMenu() { setupMenuScene(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); U.Sound.setMusic('menu'); }
 function openShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open(); }
 function openPetsShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open('pets'); }
 function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
@@ -113,6 +115,7 @@ function applyPlayerSkin(id) {
   player.node = next; GFX.scene.add(next.root);
 }
 function applyPlayerPet(id) {
+  pet.id = id; // нужен для голоса питомца даже когда нода не меняется ('none')
   const next = PT.buildPetNode(id); if (next === pet.node) return;
   if (pet.node) GFX.scene.remove(pet.node.root);
   pet.node = next;
@@ -120,6 +123,7 @@ function applyPlayerPet(id) {
 }
 function syncPetBehindPlayer() {
   pet.lane = player.lane; pet.x = U.LANES[pet.lane]; pet.z = player.z - PET_GAP_Z; pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0; pet.phase = 0; pet.headingY = 0;
+  pet.voiceT = U.rand(PET_VOICE_MIN * 0.75, PET_VOICE_MAX * 0.75); // первая реплика не сразу на старте
   if (pet.node) {
     pet.node.root.position.set(pet.x, 0, pet.z); pet.node.root.rotation.y = 0; pet.node.root.scale.setScalar(1); pet.node.root.visible = true;
     pet.node.bob.position.y = 0; pet.node.bob.scale.set(1, 1, 1);
@@ -131,7 +135,11 @@ function syncPetBehindPlayer() {
 // той же физикой, что и игрок (U.JUMP_V/GRAVITY/ROLL_TIME).
 function updatePet(dt) {
   const n = pet.node; if (!n) return;
-  if (G.state === 'run') pet.lane = player.lane;
+  if (G.state === 'run') {
+    pet.lane = player.lane;
+    pet.voiceT -= dt;
+    if (pet.voiceT <= 0) { pet.voiceT = U.rand(PET_VOICE_MIN, PET_VOICE_MAX); U.Sound.petVoice(pet.id); }
+  }
   const targetX = U.LANES[pet.lane];
   pet.x = U.damp(pet.x, targetX, PET_FOLLOW_X, dt);
   pet.z = player.z - PET_GAP_Z;
@@ -205,7 +213,7 @@ function setupMenuScene() {
   }
   Object.assign(intro, { t: 0, grab: false, alert: false, hop: false, turn: false, faceY: Math.PI });
 }
-function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; U.screens('skipIntroBtn'); U.Sound.ensure(); }
+function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; U.screens('skipIntroBtn'); U.Sound.ensure(); U.Sound.setMusic('run'); }
 function beginRun() {
   G.state = 'run'; intro.runStartZ = player.z; G.camBlend = 1; G.speed = U.BASE_SPEED; granny.zOff = granny.node.root.position.z - player.z; granny.targetZOff = -9.2;
   syncPetBehindPlayer();
@@ -213,7 +221,7 @@ function beginRun() {
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sdk.gameplayStart(); }
+function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -312,6 +320,15 @@ function updateSpin(dt, n) {
   n.inner.position.y = -0.92 + 0.13 * k;
   n.inner.scale.y = 1 - 0.1 * k;
 }
+// Шаг звучит в нижней точке корпуса: n.inner.position.y минимальна там, где |cos(runPhase)| = 0,
+// то есть при runPhase = π/2 + k·π. Считаем номер такого перехода и стреляем на его смене —
+// звук сам подстраивается под темп бега, который растёт вместе с G.speed.
+let stepIdx = -1;
+function footstep() {
+  const i = Math.floor((player.runPhase - HALF_PI) / Math.PI);
+  if (i === stepIdx) return;
+  stepIdx = i; U.Sound.footstep();
+}
 function animatePlayer(dt) {
   const n = player.node; n.root.position.set(player.x, player.y, player.z); const faceTarget = (G.state === 'run' || G.state === 'over' || G.state === 'paused') ? 0 : intro.faceY; n.root.rotation.y = U.damp(n.root.rotation.y, faceTarget, 6, dt);
   const h = Math.max(0, player.y - player.groundY); n.shadow.position.y = player.groundY - player.y + 0.02; n.shadow.scale.setScalar(U.clamp(1 - h * 0.32, 0.4, 1));
@@ -319,7 +336,7 @@ function animatePlayer(dt) {
   if (G.state === 'intro') return;
   const spinning = player.spinDir !== 0;
   const running = G.state === 'run' && player.grounded && player.rolling <= 0 && !spinning;
-  if (running) { player.runPhase += dt * (6 + G.speed * 0.55); const s = Math.sin(player.runPhase); n.legL.rotation.x = s * 1.05; n.legR.rotation.x = -s * 1.05; n.armL.rotation.x = -s * 0.85; n.armR.rotation.x = s * 0.85; n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.07; n.inner.rotation.z = 0; }
+  if (running) { player.runPhase += dt * (6 + G.speed * 0.55); footstep(); const s = Math.sin(player.runPhase); n.legL.rotation.x = s * 1.05; n.legR.rotation.x = -s * 1.05; n.armL.rotation.x = -s * 0.85; n.armR.rotation.x = s * 0.85; n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.07; n.inner.rotation.z = 0; }
   else if (!player.grounded && !spinning) { player.runPhase += dt * 4; n.legL.rotation.x = U.damp(n.legL.rotation.x, -1.15, 10, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.45, 10, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -2.4, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -2.4, 8, dt); }
   if (player.rolling > 0) { player.rolling -= dt; if (player.rolling <= 0) player.rolling = 0; }
   if (spinning) updateSpin(dt, n); else n.pivot.rotation.x = 0;
@@ -436,6 +453,7 @@ function init() {
   const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
   if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
+  AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));
