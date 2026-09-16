@@ -14,7 +14,7 @@ export function buildGranny() {
 export function buildClassroom() {
   const g = new THREE.Group();
   GFX.put(g, GFX.tplane(U.WALL_X * 2 + 0.4, U.WALL_H, GFX.wallTex), 0, U.WALL_H / 2, U.CLASS_Z1);
-  GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.tplane(4.7, 2.3, GFX.boardTex), 0, 2.7, U.CLASS_Z1 + 0.14); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
+  GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.box(4.7, 2.3, 0.03, '#2f4438'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
   const sideW = U.WALL_X - U.DOOR_HALF;
   for (const s of [-1, 1]) {
     const px = s * (U.DOOR_HALF + sideW / 2);
@@ -100,8 +100,8 @@ function buildObstacle(type) {
   else if (type === 'chairPile') { const a = buildChairMesh(); a.rotation.z = Math.PI; a.rotation.y = 0.5; GFX.put(g, a, -0.14, 1.18, 0.02); const b = buildChairMesh(); b.rotation.x = Math.PI * 0.5; b.rotation.y = -0.7; GFX.put(g, b, 0.3, 0.28, -0.06); const c = buildChairMesh(); c.rotation.z = 0.16; c.rotation.y = 1.1; GFX.put(g, c, -0.1, 0, 0.22); }
   else if (type === 'chairTower') { for (let i = 0; i < 5; i++) { const c = buildChairMesh(); c.rotation.y = (i % 2 ? 0.09 : -0.07); GFX.put(g, c, (i % 2 ? 0.035 : -0.035), i * 0.235, 0); } }
   // Стенд переиспользуется через пул, поэтому картинка тут только заводится, а назначается
-  // в spawnObstacle через GFX.assignPoster — см. комментарий у buildDecorUnit('poster').
-  else if (type === 'standBoard') { GFX.put(g, GFX.box(1.44, 1.7, 0.1, '#5d4634'), 0, 1.25, 0); if (GFX.posterKeys.length) { const p = GFX.tplane(1.2, 1.48, GFX.posterTex(0)); p.rotation.y = Math.PI; GFX.put(g, p, 0, 1.25, -0.056); p.userData.noBake = true; g.userData.posterMesh = p; g.userData.posterIdx = -1; } for (const s of [-1, 1]) GFX.put(g, GFX.box(0.09, 2.05, 0.09, '#4e3521'), s * 0.62, 1.02, 0); GFX.put(g, GFX.box(1.5, 0.08, 0.52, '#4e3521'), 0, 0.04, 0); }
+  // в spawnObstacle через GFX.assignPic — см. комментарий у buildDecorUnit('poster').
+  else if (type === 'standBoard') { GFX.put(g, GFX.box(1.44, 1.7, 0.1, '#5d4634'), 0, 1.25, 0); GFX.picMesh(g, 'poster', 1.2, 1.48, 0, 1.25, -0.056, true); for (const s of [-1, 1]) GFX.put(g, GFX.box(0.09, 2.05, 0.09, '#4e3521'), s * 0.62, 1.02, 0); GFX.put(g, GFX.box(1.5, 0.08, 0.52, '#4e3521'), 0, 0.04, 0); }
   else if (type === 'books') { const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a']; for (const [bx, bz, n] of [[-0.28, -0.08, 6], [0.24, 0.12, 4], [0.02, -0.24, 3]]) for (let i = 0; i < n; i++) GFX.put(g, GFX.box(0.42 - (i % 2) * 0.05, 0.09, 0.32, cols[(i + n) % 5]), bx + (i % 2) * 0.03, 0.045 + i * 0.09, bz); GFX.put(g, GFX.box(0.3, 0.02, 0.24, '#d9d2bd'), -0.02, 0.01, 0.26).rotation.y = 0.4; }
   else if (type === 'bags') { for (const [bx, bz, c, r] of [[-0.26, -0.04, '#2e5f8a', 0.4], [0.26, 0.14, '#7a2f3a', -0.6]]) { const p = GFX.box(0.46, 0.42, 0.32, c); p.rotation.y = r; GFX.put(g, p, bx, 0.21, bz); const f = GFX.box(0.32, 0.16, 0.1, '#1d1f24'); f.rotation.y = r; GFX.put(g, f, bx + Math.sin(r) * 0.16, 0.34, bz + Math.cos(r) * 0.16); } GFX.put(g, GFX.box(0.3, 0.04, 0.22, '#d9d2bd'), 0.02, 0.02, -0.26); GFX.put(g, GFX.cyl(0.03, 0.03, 0.2, 6, '#c98a2b'), -0.02, 0.03, 0.28).rotation.z = Math.PI / 2; }
   else if (type === 'bucket') { GFX.put(g, GFX.cyl(0.28, 0.22, 0.42, 10, '#3f7a8a'), 0, 0.21, 0); GFX.put(g, GFX.cyl(0.27, 0.27, 0.05, 10, '#2b5e6b'), 0, 0.43, 0); const st = GFX.cyl(0.035, 0.035, 1.2, 6, '#9a7040'); st.rotation.x = Math.PI * 0.45; GFX.put(g, st, -0.2, 0.11, 0.14); GFX.put(g, GFX.box(0.3, 0.1, 0.18, '#d9d2bd'), -0.2, 0.06, 0.66); }
@@ -116,8 +116,7 @@ function buildObstacle(type) {
     }
     GFX.put(g, GFX.box(2.16, 1.19, 0.12, '#5d4634'), 0, 1.735, 0);                              // деревянная рама
     GFX.put(g, GFX.box(1.98, 1.01, 0.03, '#2f4438'), 0, 1.735, -0.062);                         // подложка под текстуру (края доски)
-    const face = GFX.tplane(1.9, 0.95, GFX.boardTex); face.rotation.y = Math.PI;                // 2:1 — как сам boardTex (512×256), иначе надпись сплющивает
-    GFX.put(g, face, 0, 1.735, -0.08);
+    GFX.picMesh(g, 'board', 1.9, 0.95, 0, 1.735, -0.08, true);                                  // картинка серии boardN (2:1, как у настенной доски)
     GFX.put(g, GFX.box(2.16, 0.05, 0.18, '#4e3521'), 0, 1.13, -0.05);                           // полка для мела
     GFX.put(g, GFX.box(0.17, 0.045, 0.045, '#e8e2c8'), -0.52, 1.18, -0.09);                     // мелок
     GFX.put(g, GFX.box(0.15, 0.07, 0.09, '#b23a3a'), 0.46, 1.19, -0.09);                        // губка
@@ -184,7 +183,7 @@ export function resetPending() { pending.length = 0; pendHead = 0; }
 
 export function spawnObstacle(type, x, z, rot) {
   let g = obstaclePool[type].pop(); if (!g) g = buildObstacle(type);
-  GFX.assignPoster(g, z);   // у стенда — свежая картинка на каждый спавн (для остальных типов это no-op)
+  GFX.assignPic(g, z);      // у стенда и доски — свежая картинка на каждый спавн (для остальных типов это no-op)
   g.position.set(x, 0, z);
   if (rot !== undefined) g.rotation.y = rot; else if (type === 'desk' || type === 'tower') g.rotation.y = Math.random() < 0.5 ? Math.PI : 0; else g.rotation.y = 0;
   g.updateMatrix();
@@ -206,7 +205,7 @@ export function spawnObstacle(type, x, z, rot) {
   }
 }
 export function releaseObstacle(i) {
-  const o = activeObstacles[i]; shadowRemove(o); GFX.freePoster(o.group); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
+  const o = activeObstacles[i]; shadowRemove(o); GFX.freePic(o.group); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
   if (o.pendIdx >= 0) { pending[o.pendIdx] = null; o.pendIdx = -1; } // ещё не показан — вычёркиваем, иначе оживёт уже освобождённым
   o.group = null; activeObstacles.splice(i, 1); obDescPool.push(o);
 }
