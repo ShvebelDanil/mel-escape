@@ -59,7 +59,7 @@ export const OB_DEFS = {
   bucket:    { hw: 0.42, hz: 0.45, y0: 0,    y1: 0.50, platform: false },
   pipe:      { hw: 0.80, hz: 0.22, y0: 0,    y1: 0.60, platform: false },
   // обязательный подкат
-  board:     { hw: 0.86, hz: 0.28, y0: 1.05, y1: 1.98, platform: false },
+  board:     { hw: 0.86, hz: 0.28, y0: 1.05, y1: 2.33, platform: false },
   ladder:    { hw: 0.64, hz: 0.52, y0: 1.25, y1: 2.53, platform: false },
   // спортзал и хозчасть
   mat:       { hw: 0.80, hz: 0.80, y0: 0,    y1: 0.80, platform: true },
@@ -99,12 +99,29 @@ function buildObstacle(type) {
   else if (type === 'deskStack') { g.add(buildDeskMesh()); GFX.put(g, GFX.box(1.5, 0.09, 0.78, '#a9713c'), 0, 1.1, 0.25); GFX.put(g, GFX.box(0.7, 0.06, 0.7, '#8a5a30'), 0.3, 1.04, 0.25); for (const [lx, lz] of [[-0.62, -0.02], [0.62, -0.02], [-0.62, 0.55], [0.62, 0.55]]) GFX.put(g, GFX.box(0.07, 1.0, 0.07, '#3c4148'), lx, 1.65, lz - 0.05); }
   else if (type === 'chairPile') { const a = buildChairMesh(); a.rotation.z = Math.PI; a.rotation.y = 0.5; GFX.put(g, a, -0.14, 1.18, 0.02); const b = buildChairMesh(); b.rotation.x = Math.PI * 0.5; b.rotation.y = -0.7; GFX.put(g, b, 0.3, 0.28, -0.06); const c = buildChairMesh(); c.rotation.z = 0.16; c.rotation.y = 1.1; GFX.put(g, c, -0.1, 0, 0.22); }
   else if (type === 'chairTower') { for (let i = 0; i < 5; i++) { const c = buildChairMesh(); c.rotation.y = (i % 2 ? 0.09 : -0.07); GFX.put(g, c, (i % 2 ? 0.035 : -0.035), i * 0.235, 0); } }
-  else if (type === 'standBoard') { GFX.put(g, GFX.box(1.44, 1.7, 0.1, '#5d4634'), 0, 1.25, 0); GFX.put(g, GFX.tplane(1.2, 1.48, U.pick(GFX.posterTexes)), 0, 1.25, 0.056); for (const s of [-1, 1]) GFX.put(g, GFX.box(0.09, 2.05, 0.09, '#4e3521'), s * 0.62, 1.02, 0); GFX.put(g, GFX.box(1.5, 0.08, 0.52, '#4e3521'), 0, 0.04, 0); }
+  // Стенд переиспользуется через пул, поэтому картинка тут только заводится, а назначается
+  // в spawnObstacle через GFX.assignPoster — см. комментарий у buildDecorUnit('poster').
+  else if (type === 'standBoard') { GFX.put(g, GFX.box(1.44, 1.7, 0.1, '#5d4634'), 0, 1.25, 0); if (GFX.posterKeys.length) { const p = GFX.tplane(1.2, 1.48, GFX.posterTex(0)); p.rotation.y = Math.PI; GFX.put(g, p, 0, 1.25, -0.056); p.userData.noBake = true; g.userData.posterMesh = p; g.userData.posterIdx = -1; } for (const s of [-1, 1]) GFX.put(g, GFX.box(0.09, 2.05, 0.09, '#4e3521'), s * 0.62, 1.02, 0); GFX.put(g, GFX.box(1.5, 0.08, 0.52, '#4e3521'), 0, 0.04, 0); }
   else if (type === 'books') { const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a']; for (const [bx, bz, n] of [[-0.28, -0.08, 6], [0.24, 0.12, 4], [0.02, -0.24, 3]]) for (let i = 0; i < n; i++) GFX.put(g, GFX.box(0.42 - (i % 2) * 0.05, 0.09, 0.32, cols[(i + n) % 5]), bx + (i % 2) * 0.03, 0.045 + i * 0.09, bz); GFX.put(g, GFX.box(0.3, 0.02, 0.24, '#d9d2bd'), -0.02, 0.01, 0.26).rotation.y = 0.4; }
   else if (type === 'bags') { for (const [bx, bz, c, r] of [[-0.26, -0.04, '#2e5f8a', 0.4], [0.26, 0.14, '#7a2f3a', -0.6]]) { const p = GFX.box(0.46, 0.42, 0.32, c); p.rotation.y = r; GFX.put(g, p, bx, 0.21, bz); const f = GFX.box(0.32, 0.16, 0.1, '#1d1f24'); f.rotation.y = r; GFX.put(g, f, bx + Math.sin(r) * 0.16, 0.34, bz + Math.cos(r) * 0.16); } GFX.put(g, GFX.box(0.3, 0.04, 0.22, '#d9d2bd'), 0.02, 0.02, -0.26); GFX.put(g, GFX.cyl(0.03, 0.03, 0.2, 6, '#c98a2b'), -0.02, 0.03, 0.28).rotation.z = Math.PI / 2; }
   else if (type === 'bucket') { GFX.put(g, GFX.cyl(0.28, 0.22, 0.42, 10, '#3f7a8a'), 0, 0.21, 0); GFX.put(g, GFX.cyl(0.27, 0.27, 0.05, 10, '#2b5e6b'), 0, 0.43, 0); const st = GFX.cyl(0.035, 0.035, 1.2, 6, '#9a7040'); st.rotation.x = Math.PI * 0.45; GFX.put(g, st, -0.2, 0.11, 0.14); GFX.put(g, GFX.box(0.3, 0.1, 0.18, '#d9d2bd'), -0.2, 0.06, 0.66); }
   else if (type === 'pipe') { const p = GFX.cyl(0.14, 0.14, 1.94, 10, '#8d98a4'); p.rotation.z = Math.PI / 2; GFX.put(g, p, 0, 0.46, 0); for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.14, 0.46, 0.2, '#5a636e'), s * 0.74, 0.23, 0); GFX.put(g, GFX.box(0.3, 0.07, 0.32, '#4d5762'), s * 0.74, 0.035, 0); } GFX.put(g, GFX.cyl(0.17, 0.17, 0.1, 10, '#6b7580'), 0.3, 0.46, 0).rotation.z = Math.PI / 2; }
-  else if (type === 'board') { for (const s of [-1, 1]) { GFX.put(g, GFX.box(0.12, 1.06, 0.46, '#5d4634'), s * 1.0, 0.53, 0); GFX.put(g, GFX.box(0.26, 0.08, 0.58, '#4e3521'), s * 1.0, 0.04, 0); } GFX.put(g, GFX.box(2.14, 0.12, 0.42, '#5d4634'), 0, 1.12, 0); GFX.put(g, GFX.box(1.9, 0.82, 0.1, '#5d4634'), 0, 1.56, 0); GFX.put(g, GFX.tplane(1.74, 0.7, GFX.boardTex), 0, 1.56, 0.056); GFX.put(g, GFX.box(2.14, 0.1, 0.16, '#5d4634'), 0, 1.93, 0); }
+  // Школьная доска на колёсиках. Габарит подката (y0 1.05) обязан читаться глазом, поэтому
+  // под полотном пусто: стойки и лыжи вынесены за |x| > hw (0.86), перекладин внизу нет.
+  else if (type === 'board') {
+    for (const s of [-1, 1]) {
+      GFX.put(g, GFX.cyl(0.055, 0.055, 2.22, 8, '#8a5a33'), s * 0.99, 1.22, 0);                 // стойка
+      GFX.put(g, GFX.box(0.24, 0.09, 0.78, '#5d4634'), s * 0.99, 0.15, 0);                      // лыжа-опора
+      for (const dz of [-1, 1]) GFX.put(g, GFX.cyl(0.08, 0.08, 0.05, 10, '#2a2d33'), s * 0.99, 0.08, dz * 0.31).rotation.z = Math.PI / 2; // колёсико
+    }
+    GFX.put(g, GFX.box(2.16, 1.19, 0.12, '#5d4634'), 0, 1.735, 0);                              // деревянная рама
+    GFX.put(g, GFX.box(1.98, 1.01, 0.03, '#2f4438'), 0, 1.735, -0.062);                         // подложка под текстуру (края доски)
+    const face = GFX.tplane(1.9, 0.95, GFX.boardTex); face.rotation.y = Math.PI;                // 2:1 — как сам boardTex (512×256), иначе надпись сплющивает
+    GFX.put(g, face, 0, 1.735, -0.08);
+    GFX.put(g, GFX.box(2.16, 0.05, 0.18, '#4e3521'), 0, 1.13, -0.05);                           // полка для мела
+    GFX.put(g, GFX.box(0.17, 0.045, 0.045, '#e8e2c8'), -0.52, 1.18, -0.09);                     // мелок
+    GFX.put(g, GFX.box(0.15, 0.07, 0.09, '#b23a3a'), 0.46, 1.19, -0.09);                        // губка
+  }
   else if (type === 'ladder') { for (const s of [-1, 1]) for (const lx of [-0.52, 0.52]) { const leg = GFX.box(0.1, 2.34, 0.1, '#9a7040'); leg.rotation.x = s * 0.17; GFX.put(g, leg, lx, 1.16, s * 0.22); } for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(1.04, 0.07, 0.1, '#8a6236'), 0, 1.36 + i * 0.36, -0.26); GFX.put(g, GFX.box(1.18, 0.09, 0.6, '#8a6236'), 0, 2.34, 0); GFX.put(g, GFX.cyl(0.16, 0.13, 0.22, 10, '#3f7a8a'), 0.24, 2.45, 0.02); }
   else if (type === 'mat') { const cols = ['#1f6fa8', '#b23a3a', '#2f8a5e']; for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(1.52 - i * 0.06, 0.26, 1.5 - i * 0.06, cols[i]), (i % 2 ? 0.04 : -0.04), 0.13 + i * 0.26, (i % 2 ? -0.03 : 0.04)); GFX.put(g, GFX.box(1.4, 0.03, 1.38, '#d9d2bd'), 0, 0.795, 0); }
   else if (type === 'vault') { GFX.put(g, GFX.box(0.98, 0.32, 0.54, '#8a6236'), 0, 1.04, 0); GFX.put(g, GFX.box(1.04, 0.08, 0.6, '#5c4633'), 0, 1.2, 0); GFX.put(g, GFX.box(0.82, 0.36, 0.48, '#a07a4a'), 0, 0.7, 0); for (const [lx, lz] of [[-0.3, -0.16], [0.3, -0.16], [-0.3, 0.16], [0.3, 0.16]]) { const lg = GFX.box(0.09, 0.64, 0.09, '#3c4148'); lg.rotation.z = lx > 0 ? -0.11 : 0.11; GFX.put(g, lg, lx, 0.32, lz); } }
@@ -167,6 +184,7 @@ export function resetPending() { pending.length = 0; pendHead = 0; }
 
 export function spawnObstacle(type, x, z, rot) {
   let g = obstaclePool[type].pop(); if (!g) g = buildObstacle(type);
+  GFX.assignPoster(g, z);   // у стенда — свежая картинка на каждый спавн (для остальных типов это no-op)
   g.position.set(x, 0, z);
   if (rot !== undefined) g.rotation.y = rot; else if (type === 'desk' || type === 'tower') g.rotation.y = Math.random() < 0.5 ? Math.PI : 0; else g.rotation.y = 0;
   g.updateMatrix();
@@ -188,7 +206,7 @@ export function spawnObstacle(type, x, z, rot) {
   }
 }
 export function releaseObstacle(i) {
-  const o = activeObstacles[i]; shadowRemove(o); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
+  const o = activeObstacles[i]; shadowRemove(o); GFX.freePoster(o.group); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
   if (o.pendIdx >= 0) { pending[o.pendIdx] = null; o.pendIdx = -1; } // ещё не показан — вычёркиваем, иначе оживёт уже освобождённым
   o.group = null; activeObstacles.splice(i, 1); obDescPool.push(o);
 }

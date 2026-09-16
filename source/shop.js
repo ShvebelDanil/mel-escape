@@ -2,6 +2,7 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
 import * as PT from './pets.js';
+import * as TEX from './textures.js';
 
 // Магазин живёт отдельно от игровой логики: он только ставит уже существующего
 // Мэла (и питомца) в уже существующий класс и рулит собственным UI.
@@ -162,7 +163,7 @@ function renderPriceRow(s, owned) {
   if (owned) { row.dataset.state = 'free'; row.textContent = 'КУПЛЕНО'; return; }
   row.dataset.state = U.save.currency >= s.price ? 'price' : 'locked';
   const img = document.createElement('img');
-  img.src = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : '';
+  img.src = TEX.url('bottle');
   row.appendChild(img);
   row.appendChild(document.createTextNode(' ' + s.price));
 }

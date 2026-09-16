@@ -6,6 +6,7 @@ import * as SK from './skins.js';
 import * as PT from './pets.js';
 import * as SHOP from './shop.js';
 import * as AUD from './audio.js';
+import * as TEX from './textures.js';
 
 const COMBO_WINDOW = 1.3;
 export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
@@ -450,8 +451,9 @@ function init() {
   deskScene = ENT.buildClassroom(); GFX.scene.add(deskScene.group);
   applyPlayerPet(PT.selectedId());
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
-  const bottleUrl = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
-  if (bottleUrl) { for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; } }
+  // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
+  const bottleUrl = TEX.url('bottle');
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);

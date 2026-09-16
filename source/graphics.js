@@ -1,4 +1,5 @@
 import * as U from './utils.js';
+import * as TEX from './textures.js';
 
 export let renderer, scene, camera;
 export let texMel, texGranny, texBottle;
@@ -148,12 +149,20 @@ function makeBottleFallbackTex() {
     g.fillStyle = '#f4f0dc'; g.fillRect(16, 66, 32, 30); g.fillStyle = '#c62828'; g.fillRect(22, 4, 20, 8);
   });
 }
+// Критичные к первому кадру файловые текстуры. Сначала выбираем формат (webp/png),
+// затем ждём саму картинку — на неё завязан меш монет (entities.initCoins).
+// Если файл не доехал, TEX оставляет прозрачную заглушку — подменяем её нарисованной бутылкой,
+// чтобы монеты остались видимыми даже без ассетов.
 export function loadTextures() {
-  return new Promise(res => {
-    const url = (typeof ASSETS !== 'undefined' && ASSETS && ASSETS.bottle) ? ASSETS.bottle : null;
-    if (!url) { texBottle = makeBottleFallbackTex(); return res(); }
-    new THREE.TextureLoader().load(url, tex => { tex.encoding = THREE.sRGBEncoding; texBottle = tex; res(); }, undefined, () => { texBottle = makeBottleFallbackTex(); res(); });
-  });
+  return TEX.detectFormat().then(() => Promise.all([
+    TEX.preload(['bottle']).then(() => {
+      const t = TEX.get('bottle');
+      texBottle = (t && t.image && t.image.width > 1) ? t : makeBottleFallbackTex();
+    }),
+    // Постеры: пользовательские картинки poster1, poster2, … — сколько бы их ни добавили,
+    // просто кладутся в assets/textures/ под этими именами, без правок кода (см. discoverSeries).
+    TEX.discoverSeries('poster').then(setPosterKeys),
+  ]));
 }
 
 function makeMelFaceTex() {
@@ -194,7 +203,54 @@ function makeGrannyFaceTex() {
   });
 }
 
-export let floorTex, wallTex, lockerTex, boardTex, windowTex, shelfTex, signTex, posterTexes = [], bannerTexes = [];
+export let floorTex, wallTex, lockerTex, boardTex, windowTex, shelfTex, signTex, bannerTexes = [];
+// Ключи файловых текстур постеров (poster1, poster2, …), найденные в loadTextures() через
+// TEX.discoverSeries('poster'). Пока пусто — под рамкой ничего не рисуется, сама рамка остаётся.
+export let posterKeys = [];
+export function setPosterKeys(keys) { posterKeys = keys; }
+// Текстура постера по индексу — нужна только чтобы создать меш-носитель при сборке.
+export function posterTex(idx) { return TEX.get(posterKeys[idx]); }
+
+// Реестр постеров, размещённых на трассе ПРЯМО СЕЙЧАС (и стены, и стенды-препятствия).
+// У каждой ноды в userData лежат posterIdx (какая картинка) и posterZ (где она по трассе).
+// Раздача не случайная: новому постеру достаётся картинка, чья ближайшая копия ДАЛЬШЕ ВСЕГО.
+// Пока картинок не меньше, чем постеров в поле зрения, двух одинаковых в кадре не будет вообще;
+// если картинок меньше — повторы автоматически разносятся на максимальное расстояние, а не
+// оказываются рядом. Число картинок нигде не зашито: добавил poster6 — запас сразу вырос.
+const placedPosters = [];
+
+export function assignPoster(node, worldZ) {
+  const mesh = node.userData.posterMesh;
+  if (!mesh) return;                        // не постер (или картинок не было на момент сборки)
+  freePoster(node);                         // прошлую картинку отпускаем до выбора новой
+  const n = posterKeys.length;
+  if (!n) { mesh.visible = false; return; }
+  // Для каждой картинки ищем расстояние до её ближайшей копии на трассе и берём максимум из них.
+  // Никогда не показанная картинка даёт Infinity, поэтому сначала разойдутся все уникальные.
+  let best = -1, bestGap = -1, ties = 0;
+  for (let i = 0; i < n; i++) {
+    let gap = Infinity;
+    for (let k = 0; k < placedPosters.length; k++) {
+      const p = placedPosters[k].userData;
+      if (p.posterIdx !== i) continue;
+      const d = Math.abs(p.posterZ - worldZ);
+      if (d < gap) gap = d;
+    }
+    if (gap > bestGap) { bestGap = gap; ties = 1; best = i; }
+    // среди равных выбираем случайную резервуарной выборкой — без временного массива кандидатов
+    else if (gap === bestGap && Math.random() * (++ties) < 1) best = i;
+  }
+  node.userData.posterIdx = best; node.userData.posterZ = worldZ;
+  placedPosters.push(node);
+  mesh.material = MT(TEX.get(posterKeys[best])); mesh.visible = true;
+}
+// Постер уходит с трассы (сегмент переносится вперёд / стенд вернулся в пул) — картинка свободна.
+export function freePoster(node) {
+  if (!node || !node.userData || node.userData.posterIdx == null || node.userData.posterIdx < 0) return;
+  const k = placedPosters.indexOf(node);
+  if (k >= 0) { placedPosters[k] = placedPosters[placedPosters.length - 1]; placedPosters.pop(); }
+  node.userData.posterIdx = -1;
+}
 
 export function buildEnvTextures() {
   texMel = makeMelFaceTex(); texGranny = makeGrannyFaceTex();
@@ -205,7 +261,6 @@ export function buildEnvTextures() {
   windowTex = canvasTex(512, 166, (g, w, h) => { g.fillStyle = '#e6e1d3'; g.fillRect(0, 0, w, h); const pw = w / 3; for (let i = 0; i < 3; i++) { const x0 = i * pw + 12, y0 = 10, ww = pw - 24, hh = h - 20; g.save(); g.beginPath(); g.rect(x0, y0, ww, hh); g.clip(); const gr = g.createLinearGradient(0, y0, 0, y0 + hh); gr.addColorStop(0, '#93aec6'); gr.addColorStop(0.6, '#b6cbd9'); gr.addColorStop(1, '#c9d6cc'); g.fillStyle = gr; g.fillRect(x0, y0, ww, hh); g.fillStyle = 'rgba(96,128,96,0.28)'; g.beginPath(); g.ellipse(x0 + ww * 0.3, y0 + hh * 0.95, ww * 0.28, hh * 0.32, 0, 0, Math.PI * 2); g.fill(); g.beginPath(); g.ellipse(x0 + ww * 0.75, y0 + hh * 1.0, ww * 0.3, hh * 0.4, 0, 0, Math.PI * 2); g.fill(); g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0 + ww * 0.12, y0 + hh * 0.9); g.lineTo(x0 + ww * 0.48, y0 + hh * 0.1); g.stroke(); g.fillStyle = '#dcd6c6'; g.fillRect(x0 + ww / 2 - 3, y0, 6, hh); g.fillRect(x0, y0 + hh * 0.38 - 3, ww, 6); g.strokeStyle = 'rgba(50,60,70,0.35)'; g.lineWidth = 4; g.strokeRect(x0 + 2, y0 + 2, ww - 4, hh - 4); g.restore(); } g.strokeStyle = '#cfc8b6'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, w - 3, h - 3); }, null, maxAniso);
   shelfTex = canvasTex(256, 512, (g) => { g.fillStyle = '#6b4a2e'; g.fillRect(0, 0, 256, 512); const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a', '#d9d2bd', '#8a3b2f', '#2e7f8a']; for (let s = 0; s < 4; s++) { const y0 = 14 + s * 122; g.fillStyle = '#3a2716'; g.fillRect(12, y0, 232, 104); let x = 16; while (x < 236) { const bw = U.randi(12, 26), bh = U.randi(62, 94); if (x + bw > 240) break; g.fillStyle = U.pick(cols); g.fillRect(x, y0 + 104 - bh, bw, bh); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, y0 + 104 - bh, 3, bh); x += bw + 2; if (Math.random() < 0.12) x += U.randi(10, 30); } g.fillStyle = '#8a5a33'; g.fillRect(8, y0 + 104, 240, 14); } });
   signTex = canvasTex(128, 192, (g) => { g.fillStyle = '#f2c320'; g.fillRect(0, 0, 128, 192); g.strokeStyle = '#1a1a1a'; g.lineWidth = 4; g.strokeRect(4, 4, 120, 184); g.fillStyle = '#1a1a1a'; g.font = 'bold 19px Arial'; g.textAlign = 'center'; g.fillText('ОСТОРОЖНО', 64, 38); g.beginPath(); g.arc(64, 70, 10, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 82); g.lineTo(76, 108); g.lineTo(98, 100); g.moveTo(76, 108); g.lineTo(58, 130); g.moveTo(66, 92); g.lineTo(40, 88); g.stroke(); g.font = 'bold 21px Arial'; g.fillText('МОКРЫЙ', 64, 160); g.fillText('ПОЛ', 64, 182); });
-  posterTexes = [['#fff6dd', '#c62828', 'ДИКТАНТ', 'ЗАВТРА!'], ['#e3f2fd', '#1565c0', 'ОБЕД', 'В 13:00'], ['#fff1f1', '#6a1b9a', 'ПОБЕГ', 'ЗАПРЕЩЁН'], ['#e8f5e9', '#2e7d32', 'Субботник', 'в 9:00']].map(([bg, fg, l1, l2]) => canvasTex(256, 352, (g) => { g.fillStyle = bg; g.fillRect(0, 0, 256, 352); g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(10, 10, 236, 332); g.fillStyle = fg; g.font = 'bold 42px Arial'; g.textAlign = 'center'; g.fillText(l1, 128, 120); g.fillText(l2, 128, 172); g.fillStyle = '#9e9e9e'; for (let i = 0; i < 5; i++) g.fillRect(50, 210 + i * 22, 156 - (i % 3) * 40, 9); }));
   bannerTexes = [['#e53935', '#ffffff', 'КОНТРОЛЬНАЯ', 'РАБОТА!'], ['#fdd835', '#b71c1c', 'НЕ БЕГАТЬ', 'ПО КОРИДОРАМ'], ['#43a047', '#ffffff', 'ЛИНЕЙКА', 'В 8:00']].map(([bg, fg, l1, l2]) => canvasTex(512, 256, (g) => { g.fillStyle = bg; g.fillRect(0, 0, 512, 256); g.fillStyle = fg; for (let i = -2; i < 8; i++) { g.save(); g.translate(i * 80, 0); g.globalAlpha = 0.12; g.fillRect(0, 0, 40, 256); g.restore(); } g.globalAlpha = 1; g.font = 'bold 52px Arial'; g.textAlign = 'center'; g.fillText(l1, 256, 108); g.font = 'bold 64px Arial'; g.fillText(l2, 256, 190); g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(8, 8, 496, 240); }));
 }
 
@@ -214,7 +269,9 @@ function buildDecorUnit(kind) {
   if (kind === 'lockers') { put(g, panel(3, 2.3, 0.5, '#6d7986', lockerTex, [1]), 0, 1.15, 0.25); put(g, box(3.02, 0.03, 0.52, '#8a97a5'), 0, 2.295, 0.25); put(g, box(3.1, 0.14, 0.6, '#4d5762'), 0, 0.07, 0.3); }
   else if (kind === 'door') { for (const jx of [-0.64, 0.64]) put(g, box(0.12, 2.5, 0.22, '#6d4c2f'), jx, 1.25, 0.11); put(g, box(1.4, 0.12, 0.22, '#6d4c2f'), 0, 2.44, 0.11); put(g, box(1.16, 2.38, 0.06, '#8a5a33'), 0, 1.19, 0.16); put(g, box(0.42, 0.62, 0.03, '#cfe6ee'), 0, 1.78, 0.195); put(g, sph(0.05, 8, 8, '#e0b83e'), 0.42, 1.18, 0.21); }
   else if (kind === 'windows') { put(g, box(5.2, 1.86, 0.1, '#e6e1d3'), 0, 3.48, 0.05); put(g, tplane(5.0, 1.62, windowTex), 0, 3.5, 0.105); put(g, box(5.4, 0.1, 0.3, '#d9d3c2'), 0, 2.6, 0.15); put(g, cyl(0.12, 0.09, 0.22, 8, '#b7643a'), 1.7, 2.76, 0.15); put(g, sph(0.17, 8, 6, '#4f8a4b'), 1.7, 2.98, 0.15); }
-  else if (kind === 'poster') { put(g, box(1.2, 1.6, 0.05, '#5d4634'), 0, 2.15, 0.025); put(g, tplane(1.05, 1.45, U.pick(posterTexes)), 0, 2.15, 0.055); }
+  // Картинку здесь НЕ выбираем — только заводим меш-носитель. Конкретный постер назначает
+  // assignPoster() в момент показа (randomizeSegmentDecor), иначе он был бы вшит навсегда.
+  else if (kind === 'poster') { put(g, box(1.2, 1.6, 0.05, '#5d4634'), 0, 2.15, 0.025); if (posterKeys.length) { const p = put(g, tplane(1.05, 1.45, TEX.get(posterKeys[0])), 0, 2.15, 0.055); p.userData.noBake = true; g.userData.posterMesh = p; g.userData.posterIdx = -1; } }
   else if (kind === 'board') { put(g, box(2.9, 1.55, 0.08, '#5d4634'), 0, 2.35, 0.04); put(g, tplane(2.7, 1.35, boardTex), 0, 2.35, 0.085); put(g, box(2.8, 0.07, 0.14, '#5d4634'), 0, 1.55, 0.1); }
   else if (kind === 'extinguisher') { put(g, box(0.34, 0.8, 0.2, '#b0451f'), 0, 1.25, 0.1); put(g, cyl(0.13, 0.13, 0.42, 10, '#c62828'), 0, 1.15, 0.33); put(g, cyl(0.04, 0.04, 0.12, 6, '#37474f'), 0, 1.42, 0.33); }
   return finalizeStatic(g);
@@ -225,12 +282,13 @@ export function randomizeSegmentDecor(seg, minLocalZ) {
   const lo = Math.max(-U.SEG_LEN / 2 + 3, minLocalZ == null ? -Infinity : minLocalZ), hi = U.SEG_LEN / 2 - 3;
   for (const sideKey of ['L', 'R']) {
     const units = seg.userData.decor[sideKey], indices = units.map((_, i) => i);
-    for (let i = 0; i < units.length; i++) units[i].visible = false;
+    for (let i = 0; i < units.length; i++) { if (units[i].visible) freePoster(units[i]); units[i].visible = false; }
     for (let i = indices.length - 1; i > 0; i--) { const j = U.randi(0, i), temp = indices[i]; indices[i] = indices[j]; indices[j] = temp; }
     const n = (lo <= -3 && U.randi(1, 2) === 2) ? 2 : 1;
     for (let i = 0; i < n; i++) {
       const u = units[indices[i]]; u.visible = true;
       if (n === 1) u.position.z = U.rand(lo, hi); else if (i === 0) u.position.z = U.rand(lo, -3); else u.position.z = U.rand(3, hi);
+      assignPoster(u, seg.position.z + u.position.z);   // позиция уже известна — от неё зависит выбор картинки
       u.updateMatrix();
     }
   }
@@ -298,6 +356,7 @@ export function initGraphics(container) {
   renderer.outputEncoding = THREE.sRGBEncoding; renderer.setClearColor(0x9fb2c0);
   container.appendChild(renderer.domElement);
   maxAniso = Math.min(4, renderer.capabilities.getMaxAnisotropy() || 1);
+  TEX.attachRenderer(renderer, maxAniso);
   initBakeHelpers();
   SHADOW_MAT_CHAR = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
   SHADOW_MAT_OBS = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 });

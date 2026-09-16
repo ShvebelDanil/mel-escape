@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Мэл: Побег из школы</title>
+<!-- Текстура монеты нужна и WebGL, и иконкам HUD: просим браузер начать качать её сразу,
+     параллельно с three.js. Браузер без WebP пропустит строку из-за type и возьмёт .png из JS. -->
+<link rel="preload" as="image" type="image/webp" href="assets/textures/bottle.webp">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
@@ -401,10 +404,7 @@
 <script src="https://sdk.games.s3.yandex.net/sdk.js"></script>
 <!-- Подключаем библиотеку из новой папки lib -->
 <script src="lib/three.min.js"></script>
-<!-- Подключаем закодированные картинки из папки source (ДО загрузки игры!) -->
-    <script src="source/assets.js"></script>
-    
-    <!-- ТЕПЕРЬ ПОДКЛЮЧАЕМ ГЛАВНЫЙ ФАЙЛ КАК МОДУЛЬ -->
-    <script type="module" src="source/main.js"></script>
+<!-- ТЕПЕРЬ ПОДКЛЮЧАЕМ ГЛАВНЫЙ ФАЙЛ КАК МОДУЛЬ -->
+<script type="module" src="source/main.js"></script>
 </body>
 </html>
