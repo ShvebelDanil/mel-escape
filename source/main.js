@@ -36,9 +36,10 @@ function jump() {
   if (G.state !== 'run' || !player.grounded) return;
   player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0;
   const dir = trickDir();
+  // flip() и jump() делят один и тот же пул семплов ('action') — раньше вызывались
+  // ОБА на трюковый прыжок и звук слышался дважды подряд. Теперь ровно один вызов на прыжок.
   if (dir) { startSpin(dir, FLIP_TIME); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
-  else if (player.spinDir) { player.spinDir = 0; player.node.pivot.rotation.x = 0; }
-  U.Sound.jump();
+  else { if (player.spinDir) { player.spinDir = 0; player.node.pivot.rotation.x = 0; } U.Sound.jump(); }
 }
 function roll() {
   if (G.state !== 'run') return;
@@ -93,11 +94,13 @@ function stumble(o) {
   if (Math.abs(U.LANES[nl] - o.x) < o.hw + 0.35) nl = U.clamp(nl + (movingPlusX ? -1 : 1), 0, 2);
   player.lane = nl; player.invuln = 1.4;
   granny.closeT = 5; granny.targetZOff = -2.7; G.shake = Math.max(G.shake, 0.45);
-  U.Sound.stumble(); U.Sound.growl(); U.replayCss(U.UI.flash); U.setYell(U.pick(YELLS)); ENT.burst(player.x, player.y + 1, player.z, '#ffd94a', 5, 2.2);
+  // Рык бабки на столкновении убран по просьбе — раньше синтезированный growl() наслаивался
+  // поверх кастомного звука hit, когда growl.mp3 ещё не добавлен. Сам звук растрёпы (hit) остаётся.
+  U.Sound.stumble(); U.replayCss(U.UI.flash); U.setYell(U.pick(YELLS)); ENT.burst(player.x, player.y + 1, player.z, '#ffd94a', 5, 2.2);
 }
 function caught() {
   G.state = 'over'; G.overT = 0; G.overShown = false; granny.catchMode = true; granny.targetZOff = -0.85; G.shake = 0.8;
-  U.Sound.crash(); U.Sound.growl(); U.replayCss(U.UI.flash); ENT.burst(player.x, player.y + 1.2, player.z, '#b0451f', 8, 3);
+  U.Sound.crash(); U.replayCss(U.UI.flash); ENT.burst(player.x, player.y + 1.2, player.z, '#b0451f', 8, 3);
   U.Sdk.gameplayStop(); const m = Math.floor(G.dist); const isRecord = m > U.save.best;
   if (isRecord) U.save.best = m;
   const gained = G.bottles - G.bankedBottles; U.save.bottles += gained; U.save.currency += gained; G.bankedBottles = G.bottles;

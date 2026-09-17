@@ -190,17 +190,28 @@ export const Sound = {
   // Каждый игровой звук сперва ищет свой семпл в банке (assets/sounds/<key>.mp3),
   // и только если файла нет — играет старый синтезированный вариант.
   sfx(key) { return this.bank ? this.bank.play(key) : false; },
-  jump() { if (this.sfx('jump')) return; this.tone(300, 640, 0.2, 'square', 0.12); },
-  land() { if (this.sfx('land')) return; this.noise(0.12, 0.1, 500); },
-  roll() { if (this.sfx('roll')) return; this.noise(0.28, 0.14, 700); },
-  flip() { if (this.sfx('flip')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
+  // jump/flip/land/roll/lane делят один и тот же ключ банка ('action') — по просьбе:
+  // один общий пул из нескольких файлов на все пять действий, а не отдельный звук на каждое.
+  // Синтезированный fallback у каждого действия остаётся СВОИМ — он звучит только пока
+  // семплов нет вовсе, и разнообразие синтеза здесь ни при чём.
+  jump() { if (this.sfx('action')) return; this.tone(300, 640, 0.2, 'square', 0.12); },
+  land() { if (this.sfx('action')) return; this.noise(0.12, 0.1, 500); },
+  roll() { if (this.sfx('action')) return; this.noise(0.28, 0.14, 700); },
+  flip() { if (this.sfx('action')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
   coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
-  lane() { if (this.sfx('lane')) return; this.noise(0.09, 0.06, 1400); },
-  stumble() { if (this.sfx('warn')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
-  crash() { if (this.sfx('death')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
+  lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
+  // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
+  stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
+  crash() { if (this.sfx('hit')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
   growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
   click() { if (this.sfx('click')) return; this.tone(650, 650, 0.05, 'sine', 0.1); },
-  denied() { if (this.sfx('ui_denied')) return; this.stumble(); },
+  // Fallback — СВОЙ синтез, а не делегирование в stumble(): та теперь сама проверяет
+  // общий банк-ключ 'hit', и если у тебя уже есть hit.mp3 (для столкновений), но ещё нет
+  // ui_denied.mp3, магазин при нехватке чекушек играл бы чужой звук столкновения.
+  denied() { if (this.sfx('ui_denied')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
+  // Успешная покупка в магазине. Своего синтеза нет — за неимением purchase.mp3 звучит
+  // звук монеты (coin.mp3, а нет и его — синтезированный «дзынь»), это уместный дефолт.
+  purchase() { if (this.sfx('purchase')) return; this.coin(); },
   // Шаг и голос питомца существуют только как семплы — без файла просто молчат.
   footstep() { this.sfx('step'); },
   petVoice(id) { this.sfx('pet_' + id); },

@@ -101,7 +101,8 @@ function action() {
   const c = cat(), s = c.list[index];
   const noun = mode === 'pets' ? 'питомца' : 'скина';
   if (c.isOwned(s.id)) {
-    if (c.select(s.id)) { U.Sound.coin(); refresh(); }
+    // Смена уже купленного скина/питомца — не покупка и не сбор монеты, обычный клик UI.
+    if (c.select(s.id)) { U.Sound.click(); refresh(); }
     return;
   }
   if (U.save.currency < s.price) {
@@ -111,7 +112,7 @@ function action() {
   }
   if (c.buy(s.id)) {
     c.select(s.id);
-    U.Sound.coin();
+    U.Sound.purchase();
     refresh();
     showModal('ok', 'ПОКУПКА СОВЕРШЕНА!', mode === 'pets' ? 'Питомец теперь доступен для выбора.' : 'Теперь этот скин доступен в твоём гардеробе.', 'ОК');
   }
