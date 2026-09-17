@@ -430,6 +430,20 @@ function bindInput() {
     if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); U.Sound.pauseAll(); }
     else if (G.state !== 'paused') U.Sound.resumeAll();
   });
+  // Свёрнутое окно или переключение в другую программу/окно браузера visibilitychange НЕ ловит:
+  // вкладка формально остаётся видимой (document.hidden === false), игра продолжала бежать без игрока.
+  // Ловим потерю фокуса окна и ведём себя так же, как при уходе со вкладки.
+  // Во время рекламы фокус забирает её iframe — это не уход игрока, звуком и паузой там рулит SDK.
+  window.addEventListener('blur', () => {
+    if (U.adBusy) return;
+    if (G.state === 'intro') skipIntro();
+    if (G.state === 'run') pauseRun();
+    U.Sound.pauseAll();
+  });
+  window.addEventListener('focus', () => {
+    if (U.adBusy || document.hidden) return;
+    if (G.state !== 'paused') U.Sound.resumeAll();
+  });
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
