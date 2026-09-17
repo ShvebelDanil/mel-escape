@@ -20,7 +20,8 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'newRecord', 'musicBtn', 'soundBtn', 'pauseMusicBtn', 'pauseSoundBtn', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
-  'shopTabSkins', 'shopTabPets'];
+  'shopTabSkins', 'shopTabPets',
+  'settingsModal', 'questsModal', 'questsList', 'soonModal', 'questToasts'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -45,7 +46,10 @@ export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', music: 1, sound: 1 };
+// totalDist/runs/miniGames/questsDone обслуживают систему заданий (source/quests.js):
+// накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
+// мини-игр (пока всегда 0 — мини-игры нет) и id уже выданных заданий.
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', music: 1, sound: 1, totalDist: 0, runs: 0, miniGames: 0, questsDone: [] };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 export function readLocalSave() {
   try {
@@ -54,6 +58,7 @@ export function readLocalSave() {
       save.best = s.best | 0; save.bottles = s.bottles | 0; save.music = s.music !== 0 ? 1 : 0; save.sound = s.sound !== 0 ? 1 : 0;
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
+      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone);
     }
   } catch (e) {}
 }
@@ -67,7 +72,7 @@ export function syncToggleUI() {
 }
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet }, false)).catch(() => {});
+  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone }, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -98,7 +103,7 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         if (typeof d.music === 'number') save.music = d.music ? 1 : 0;
@@ -110,6 +115,12 @@ export const Sdk = {
         if (typeof d.selectedSkin === 'string' && d.selectedSkin) save.selectedSkin = d.selectedSkin;
         for (const id of cleanStrList(d.ownedPets)) if (save.ownedPets.indexOf(id) < 0) save.ownedPets.push(id);
         if (typeof d.selectedPet === 'string' && d.selectedPet) save.selectedPet = d.selectedPet;
+        // Прогресс заданий мёржим как и остальное — берём максимум/объединение,
+        // иначе переход между устройствами обнулял бы уже выполненное.
+        if (typeof d.totalDist === 'number') save.totalDist = Math.max(save.totalDist, d.totalDist | 0);
+        if (typeof d.runs === 'number') save.runs = Math.max(save.runs, d.runs | 0);
+        if (typeof d.miniGames === 'number') save.miniGames = Math.max(save.miniGames, d.miniGames | 0);
+        for (const id of cleanStrList(d.questsDone)) if (save.questsDone.indexOf(id) < 0) save.questsDone.push(id);
       }
       return true;
     }).catch(() => false);
