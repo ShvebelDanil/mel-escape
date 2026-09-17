@@ -191,6 +191,7 @@ function showCombo() {
 }
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spinDir = 0; player.spinT = 0; }
 function resetRun() {
+  GFX.rollRunPics();      // вид за окном разыгрывается на забег — до перегенерации декора ниже
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
   ENT.resetPending();
   for (let i = ENT.activeCoins.length - 1; i >= 0; i--) ENT.releaseCoin(i);

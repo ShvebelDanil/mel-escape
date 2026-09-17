@@ -14,7 +14,7 @@ export function buildGranny() {
 export function buildClassroom() {
   const g = new THREE.Group();
   GFX.put(g, GFX.tplane(U.WALL_X * 2 + 0.4, U.WALL_H, GFX.wallTex), 0, U.WALL_H / 2, U.CLASS_Z1);
-  GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.box(4.7, 2.3, 0.03, '#2f4438'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
+  GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.box(4.7, 2.3, 0.03, '#364f3f'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
   const sideW = U.WALL_X - U.DOOR_HALF;
   for (const s of [-1, 1]) {
     const px = s * (U.DOOR_HALF + sideW / 2);
@@ -82,11 +82,32 @@ function buildCartMesh() {
   for (const [px, pz] of [[-0.46, -0.41], [0.46, -0.41], [-0.46, 0.41], [0.46, 0.41]]) { GFX.put(g, GFX.box(0.05, 0.5, 0.05, '#5a636e'), px, 0.25, pz); GFX.put(g, GFX.box(0.1, 0.1, 0.1, '#2a2d33'), px, 0.05, pz); }
   GFX.put(g, GFX.cyl(0.15, 0.12, 0.26, 8, '#e0b83e'), 0.2, 0.37, 0.1); GFX.put(g, GFX.box(0.34, 0.24, 0.34, '#3b3f47'), -0.24, 0.36, -0.1); return g;
 }
+// Цвета полотна доски-стойки: «чёрная», тёмно-зелёная и тёмно-коричневая — три равновероятных
+// варианта одного препятствия, выбираются при сборке экземпляра пула.
+const BOARD_COLORS = ['#2b2e33', '#364f3f', '#3a2b22'];
+
 function buildObstacle(type) {
   const g = new THREE.Group();
   if (type === 'desk') g.add(buildDeskMesh());
   else if (type === 'tower') { g.add(buildDeskMesh()); GFX.put(g, buildChairMesh(), 0.3, U.DESK_TOP_Y, 0.25); }
-  else if (type === 'banner') { for (const px of [-0.95, 0.95]) { GFX.put(g, GFX.cyl(0.055, 0.055, 2.95, 8, '#5a636e'), px, 1.47, 0); GFX.put(g, GFX.box(0.42, 0.07, 0.8, '#5a636e'), px, 0.035, 0); } GFX.put(g, new THREE.Mesh(GFX.GBox(2.0, 1.1, 0.09), GFX.MT(U.pick(GFX.bannerTexes))), 0, 1.85, 0); GFX.put(g, GFX.box(2.1, 0.06, 0.06, '#3f4750'), 0, 2.43, 0); }
+  // Доска на металлической стойке (тип исторически зовётся banner — имя завязано на level.js).
+  // Три варианта полотна разыгрываются НА ЭКЗЕМПЛЯР пула: цвет — обычный одноцветный бокс, его
+  // склеивает finalizeStatic, поэтому в рантайме он уже не меняется. Картинка серии boardN, наоборот,
+  // назначается на каждый спавн (assignPic), так что одна и та же стойка каждый раз с новым мелом.
+  else if (type === 'banner') {
+    for (const px of [-1.06, 1.06]) {
+      GFX.put(g, GFX.cyl(0.05, 0.05, 2.9, 8, '#5a636e'), px, 1.45, 0);                            // стойка
+      GFX.put(g, GFX.box(0.44, 0.07, 0.86, '#5a636e'), px, 0.035, 0);                             // лапа-основание
+      GFX.put(g, GFX.box(0.14, 0.1, 0.14, '#3f4750'), px, 1.78, 0);                               // кронштейн к раме
+    }
+    GFX.put(g, GFX.box(2.24, 0.07, 0.07, '#3f4750'), 0, 2.86, 0);                                 // верхняя перекладина
+    GFX.put(g, GFX.box(2.12, 1.24, 0.1, '#5d4634'), 0, 1.78, 0);                                  // рама (как у доски на колёсиках)
+    GFX.put(g, GFX.box(1.96, 1.08, 0.03, U.pick(BOARD_COLORS)), 0, 1.78, -0.055);                 // полотно: цвет варианта
+    GFX.picMesh(g, 'board', 1.9, 0.95, 0, 1.78, -0.075, true);                                    // картинка серии boardN (2:1)
+    GFX.put(g, GFX.box(2.16, 0.05, 0.18, '#4e3521'), 0, 1.14, -0.05);                             // полка для мела
+    GFX.put(g, GFX.box(0.17, 0.045, 0.045, '#e8e2c8'), -0.5, 1.19, -0.09);                        // мелок
+    GFX.put(g, GFX.box(0.15, 0.07, 0.09, '#b23a3a'), 0.48, 1.2, -0.09);                           // губка
+  }
   else if (type === 'locker') { GFX.put(g, GFX.panel(1.5, 2.7, 0.75, '#6d7986', GFX.lockerTex, [-1]), 0, 1.35, 0); GFX.put(g, GFX.box(1.52, 0.03, 0.77, '#8a97a5'), 0, 2.695, 0); GFX.put(g, GFX.box(1.56, 0.12, 0.8, '#4d5762'), 0, 0.06, 0); }
   else if (type === 'shelf') { GFX.put(g, GFX.panel(1.5, 2.4, 0.7, '#6b4a2e', GFX.shelfTex, [1, -1]), 0, 1.2, 0); GFX.put(g, GFX.box(1.56, 0.1, 0.76, '#4e3521'), 0, 0.05, 0); GFX.put(g, GFX.box(1.56, 0.06, 0.76, '#4e3521'), 0, 2.43, 0); }
   else if (type === 'cart') g.add(buildCartMesh());
@@ -115,7 +136,7 @@ function buildObstacle(type) {
       for (const dz of [-1, 1]) GFX.put(g, GFX.cyl(0.08, 0.08, 0.05, 10, '#2a2d33'), s * 0.99, 0.08, dz * 0.31).rotation.z = Math.PI / 2; // колёсико
     }
     GFX.put(g, GFX.box(2.16, 1.19, 0.12, '#5d4634'), 0, 1.735, 0);                              // деревянная рама
-    GFX.put(g, GFX.box(1.98, 1.01, 0.03, '#2f4438'), 0, 1.735, -0.062);                         // подложка под текстуру (края доски)
+    GFX.put(g, GFX.box(1.98, 1.01, 0.03, '#364f3f'), 0, 1.735, -0.062);                         // подложка под текстуру (края доски)
     GFX.picMesh(g, 'board', 1.9, 0.95, 0, 1.735, -0.08, true);                                  // картинка серии boardN (2:1, как у настенной доски)
     GFX.put(g, GFX.box(2.16, 0.05, 0.18, '#4e3521'), 0, 1.13, -0.05);                           // полка для мела
     GFX.put(g, GFX.box(0.17, 0.045, 0.045, '#e8e2c8'), -0.52, 1.18, -0.09);                     // мелок

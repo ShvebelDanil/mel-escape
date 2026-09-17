@@ -203,7 +203,7 @@ function makeGrannyFaceTex() {
   });
 }
 
-export let floorTex, wallTex, lockerTex, shelfTex, signTex, bannerTexes = [];
+export let floorTex, wallTex, lockerTex, shelfTex, signTex;
 // Серии пользовательских файловых картинок: постеры на стенах (poster1, poster2, …), доски
 // (board1, board2, …) и вид за окном (window1, window2, …). Ключи находит TEX.discoverSeries()
 // в loadTextures(). У каждой серии свой список ключей и свой реестр размещённых нод, поэтому
@@ -214,6 +214,21 @@ export function setPicKeys(series, keys) { picKeys[series] = keys; }
 // Текстура по индексу — нужна только чтобы создать меш-носитель при сборке.
 export function picTex(series, idx) { return TEX.get(picKeys[series][idx]); }
 
+// У каких серий картинки с альфа-каналом. Мел на доске рисуется на ПРОЗРАЧНОМ фоне, чтобы сквозь
+// него было видно зелёное полотно; обычный MT() альфу не читает вовсе и показывает RGB прозрачных
+// пикселей — то есть чёрный. Постеры и вид за окном непрозрачны по смыслу, им это не нужно.
+const PIC_ALPHA = { poster: false, board: true, window: false };
+// Материал-декаль: depthWrite выключен, чтобы плоскость поверх полотна не писала глубину и не
+// перекрывала то, что нарисуют после неё; alphaTest отсекает полностью прозрачные пиксели ещё до
+// смешивания (дешевле), а мягкие края мела остаются мягкими за счёт transparent.
+const decalMatCache = new Map();
+export function MTD(tex) {
+  let m = decalMatCache.get(tex);
+  if (!m) { m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.02, depthWrite: false }); decalMatCache.set(tex, m); }
+  return m;
+}
+const picMat = (series, tex) => (PIC_ALPHA[series] ? MTD(tex) : MT(tex));
+
 // Заводит на ноде меш-носитель картинки: геометрия и позиция фиксированы навсегда, а конкретная
 // картинка назначается в момент показа через assignPic() — иначе она была бы вшита при сборке.
 // faceBack — развернуть лицом в −Z (игрок бежит в +Z, камера сзади, так что к нему обращена −Z).
@@ -222,6 +237,7 @@ export function picMesh(node, series, w, h, x, y, z, faceBack) {
   const keys = picKeys[series];
   if (!keys.length) return null;
   const p = tplane(w, h, TEX.get(keys[0]));
+  p.material = picMat(series, TEX.get(keys[0]));   // серии с альфой рисуются материалом-декалью
   if (faceBack) p.rotation.y = Math.PI;
   put(node, p, x, y, z);
   p.userData.noBake = true;                 // материал подменяется в рантайме — склеивать нельзя
@@ -237,10 +253,16 @@ export function picMesh(node, series, w, h, x, y, z, faceBack) {
 // оказываются рядом. Число картинок нигде не зашито: добавил poster6 — запас сразу вырос.
 const placedPics = { poster: [], board: [], window: [] };
 
-// Режим «основная картинка + пасхалка»: носитель почти всегда показывает первую картинку серии
-// (window1), и лишь с этим шансом — любую из остальных (window2, window3, …). Раздача «подальше
-// друг от друга» тут не нужна: все окна коридора и должны выглядеть одинаково.
-export const PIC_RARE_CHANCE = 0.01;
+// Серии, у которых картинка выбирается ОДИН РАЗ НА ЗАБЕГ (сейчас это окна): все окна коридора
+// в рамках попытки показывают одну и ту же картинку — вид за окном в одном здании не меняется от
+// окна к окну, — а какую именно, разыгрывается в начале забега. Раздача «подальше друг от друга»
+// таким сериям не нужна, в placedPics они не попадают.
+const picRunIdx = { window: 0 };
+// Зовётся из main.js:resetRun() ДО перегенерации декора сегментов, поэтому новая картинка
+// встаёт сразу во все окна, а не только в те, что переедут вперёд по ходу забега.
+export function rollRunPics() {
+  for (const s in picRunIdx) { const n = picKeys[s].length; picRunIdx[s] = n ? (Math.random() * n | 0) : 0; }
+}
 
 export function assignPic(node, worldZ) {
   const mesh = node.userData.picMesh;
@@ -249,10 +271,10 @@ export function assignPic(node, worldZ) {
   const keys = picKeys[node.userData.picSeries], placed = placedPics[node.userData.picSeries];
   const n = keys.length;
   if (!n) { mesh.visible = false; return; }
-  if (node.userData.picRare) {              // окна: основная картинка, редко — пасхалка
-    const r = (n > 1 && Math.random() < PIC_RARE_CHANCE) ? 1 + (Math.random() * (n - 1) | 0) : 0;
+  if (node.userData.picRun) {               // окна: картинка одна на весь забег, выбрана в rollRunPics
+    const r = Math.min(picRunIdx[node.userData.picSeries], n - 1);
     node.userData.picIdx = r; node.userData.picZ = worldZ;   // в placed не кладём — учёт не нужен
-    mesh.material = MT(TEX.get(keys[r])); mesh.visible = true; return;
+    mesh.material = picMat(node.userData.picSeries, TEX.get(keys[r])); mesh.visible = true; return;
   }
   // Для каждой картинки ищем расстояние до её ближайшей копии на трассе и берём максимум из них.
   // Никогда не показанная картинка даёт Infinity, поэтому сначала разойдутся все уникальные.
@@ -271,7 +293,7 @@ export function assignPic(node, worldZ) {
   }
   node.userData.picIdx = best; node.userData.picZ = worldZ;
   placed.push(node);
-  mesh.material = MT(TEX.get(keys[best])); mesh.visible = true;
+  mesh.material = picMat(node.userData.picSeries, TEX.get(keys[best])); mesh.visible = true;
 }
 // Носитель уходит с трассы (сегмент переносится вперёд / обстакл вернулся в пул) — картинка свободна.
 export function freePic(node) {
@@ -289,7 +311,6 @@ export function buildEnvTextures() {
   lockerTex = canvasTex(256, 512, (g) => { g.fillStyle = '#7e8b99'; g.fillRect(0, 0, 256, 512); for (let i = 0; i < 2; i++) { const x = 4 + i * 126; g.fillStyle = '#8895a3'; g.fillRect(x, 6, 118, 496); g.strokeStyle = '#5d6873'; g.lineWidth = 4; g.strokeRect(x, 6, 118, 496); g.fillStyle = '#55606a'; for (let v = 0; v < 3; v++) g.fillRect(x + 20, 30 + v * 16, 78, 7); g.fillStyle = '#f3c53d'; g.fillRect(x + 88, 250, 16, 34); } });
   shelfTex = canvasTex(256, 512, (g) => { g.fillStyle = '#6b4a2e'; g.fillRect(0, 0, 256, 512); const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a', '#d9d2bd', '#8a3b2f', '#2e7f8a']; for (let s = 0; s < 4; s++) { const y0 = 14 + s * 122; g.fillStyle = '#3a2716'; g.fillRect(12, y0, 232, 104); let x = 16; while (x < 236) { const bw = U.randi(12, 26), bh = U.randi(62, 94); if (x + bw > 240) break; g.fillStyle = U.pick(cols); g.fillRect(x, y0 + 104 - bh, bw, bh); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, y0 + 104 - bh, 3, bh); x += bw + 2; if (Math.random() < 0.12) x += U.randi(10, 30); } g.fillStyle = '#8a5a33'; g.fillRect(8, y0 + 104, 240, 14); } });
   signTex = canvasTex(128, 192, (g) => { g.fillStyle = '#f2c320'; g.fillRect(0, 0, 128, 192); g.strokeStyle = '#1a1a1a'; g.lineWidth = 4; g.strokeRect(4, 4, 120, 184); g.fillStyle = '#1a1a1a'; g.font = 'bold 19px Arial'; g.textAlign = 'center'; g.fillText('ОСТОРОЖНО', 64, 38); g.beginPath(); g.arc(64, 70, 10, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 82); g.lineTo(76, 108); g.lineTo(98, 100); g.moveTo(76, 108); g.lineTo(58, 130); g.moveTo(66, 92); g.lineTo(40, 88); g.stroke(); g.font = 'bold 21px Arial'; g.fillText('МОКРЫЙ', 64, 160); g.fillText('ПОЛ', 64, 182); });
-  bannerTexes = [['#e53935', '#ffffff', 'КОНТРОЛЬНАЯ', 'РАБОТА!'], ['#fdd835', '#b71c1c', 'НЕ БЕГАТЬ', 'ПО КОРИДОРАМ'], ['#43a047', '#ffffff', 'ЛИНЕЙКА', 'В 8:00']].map(([bg, fg, l1, l2]) => canvasTex(512, 256, (g) => { g.fillStyle = bg; g.fillRect(0, 0, 512, 256); g.fillStyle = fg; for (let i = -2; i < 8; i++) { g.save(); g.translate(i * 80, 0); g.globalAlpha = 0.12; g.fillRect(0, 0, 40, 256); g.restore(); } g.globalAlpha = 1; g.font = 'bold 52px Arial'; g.textAlign = 'center'; g.fillText(l1, 256, 108); g.font = 'bold 64px Arial'; g.fillText(l2, 256, 190); g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(8, 8, 496, 240); }));
 }
 
 function buildDecorUnit(kind) {
@@ -303,7 +324,7 @@ function buildDecorUnit(kind) {
   else if (kind === 'windows') {
     put(g, box(4.86, 1.96, 0.05, '#cfdbe4'), 0, 2.78, 0.025);                 // подложка: пустое стекло, когда картинок нет
     const glass = picMesh(g, 'window', 4.6, 1.84, 0, 2.78, 0.058);
-    if (glass) g.userData.picRare = true;                                     // window1 почти всегда, остальные — пасхалка
+    if (glass) g.userData.picRun = true;                                      // вид за окном один на весь забег
     put(g, box(0.13, 1.88, 0.13, '#f2efe4'), 0, 2.78, 0.085);                 // импост (перегородка по центру)
     for (const s of [-1, 1]) put(g, box(0.16, 2.16, 0.16, '#f2efe4'), s * 2.38, 2.78, 0.08);   // боковые стойки рамы
     put(g, box(4.92, 0.16, 0.16, '#f2efe4'), 0, 3.78, 0.08); put(g, box(4.92, 0.16, 0.16, '#f2efe4'), 0, 1.78, 0.08);
@@ -326,7 +347,7 @@ function buildDecorUnit(kind) {
   else if (kind === 'poster') { put(g, box(1.2, 1.6, 0.05, '#5d4634'), 0, 2.15, 0.025); picMesh(g, 'poster', 1.05, 1.45, 0, 2.15, 0.055); }
   // Доска на стене — пустая: рама + тёмное полотно, сверху опциональная картинка серии boardN.
   // Полотно 2.7×1.35 (ровно 2:1) — под тем же соотношением собираются board-текстуры.
-  else if (kind === 'board') { put(g, box(2.9, 1.55, 0.08, '#5d4634'), 0, 2.35, 0.04); put(g, box(2.7, 1.35, 0.03, '#2f4438'), 0, 2.35, 0.085); picMesh(g, 'board', 2.7, 1.35, 0, 2.35, 0.105); put(g, box(2.8, 0.07, 0.14, '#5d4634'), 0, 1.55, 0.1); }
+  else if (kind === 'board') { put(g, box(2.9, 1.55, 0.08, '#5d4634'), 0, 2.35, 0.04); put(g, box(2.7, 1.35, 0.03, '#364f3f'), 0, 2.35, 0.085); picMesh(g, 'board', 2.7, 1.35, 0, 2.35, 0.105); put(g, box(2.8, 0.07, 0.14, '#5d4634'), 0, 1.55, 0.1); }
   else if (kind === 'extinguisher') { put(g, box(0.34, 0.8, 0.2, '#b0451f'), 0, 1.25, 0.1); put(g, cyl(0.13, 0.13, 0.42, 10, '#c62828'), 0, 1.15, 0.33); put(g, cyl(0.04, 0.04, 0.12, 6, '#37474f'), 0, 1.42, 0.33); }
   return finalizeStatic(g);
 }
