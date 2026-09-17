@@ -154,15 +154,26 @@ export function showRewarded(onReward, onFail) {
 const BASS_SEQ = [110, 0, 110, 0, 130.81, 0, 110, 0, 98, 0, 98, 0, 110, 0, 130.81, 0, 87.31, 0, 87.31, 0, 110, 0, 130.81, 0, 98, 0, 110, 0, 130.81, 0, 146.83, 0];
 const LEAD_SEQ = [440, 0, 523.25, 0, 587.33, 523.25, 440, 0, 392, 0, 440, 0, 523.25, 0, 587.33, 0, 349.23, 0, 440, 0, 523.25, 440, 392, 0, 440, 523.25, 587.33, 0, 659.25, 587.33, 523.25, 0];
 const STEP_DUR = 60 / 138 / 2;
+// Упреждение планирования синтезированных звуков, секунды. Это и есть лекарство от «звук вдруг стал тихим»:
+// ctx.currentTime — время УЖЕ посчитанного аудио-блока. Если ставить события огибающей ровно на
+// currentTime, то при любой задержке главного потока часть огибающей оказывается в прошлом и не
+// воспроизводится вовсе: звук стартует с середины затухания и слышится резко тише (а если задержка
+// больше длительности звука — не слышится совсем). Клик по кнопке срабатывал чаще всего, потому что
+// сам тянет за собой сборку модели и компиляцию шейдеров в том же кадре. 20 мс вперёд гарантируют, что
+// огибающая целиком лежит в будущем; на слух такая задержка незаметна.
+const SFX_LEAD = 0.02;
+const CLICK_F = 650;   // частота синтезированного клика, Гц — фиксирована, разброса нет
+const CLICK_V = 0.10;  // его громкость — тоже фиксирована
 export const Sound = {
-  ctx: null, master: null, musicGain: null, sfxGain: null, noiseBuf: null, musicOn: true, sfxOn: true, paused: false, step: 0, nextNote: 0, timer: null,
+  ctx: null, master: null, musicGain: null, sfxGain: null, clickVoice: null, noiseBuf: null, musicOn: true, sfxOn: true, paused: false, step: 0, nextNote: 0, timer: null,
   // Банк семплов из assets/sounds/ (source/audio.js). Пока он null — играет только синтез ниже.
   bank: null,
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended' && !this.paused) { try { this.ctx.resume(); } catch (e) {} } return true; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
-      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(this.ctx.destination);
+      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.16; this.musicGain.connect(this.master);
       this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.5; this.sfxGain.connect(this.master);
       this.applyToggles();
@@ -178,9 +189,11 @@ export const Sound = {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
   },
-  tone(f0, f1, dur, type, vol, when) { if (!this.ctx || !this.sfxOn) return; this.osc(f0, f1, dur, type || 'sine', vol, when || this.ctx.currentTime, this.sfxGain); },
+  // Единая точка отсчёта для всего синтеза: всегда чуть ВПЕРЁД от текущего времени (см. SFX_LEAD).
+  sfxTime() { return this.ctx.currentTime + SFX_LEAD; },
+  tone(f0, f1, dur, type, vol, when) { if (!this.ctx || !this.sfxOn) return; this.osc(f0, f1, dur, type || 'sine', vol, when || this.sfxTime(), this.sfxGain); },
   noise(dur, vol, freq) {
-    if (!this.ctx || !this.sfxOn) return; const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.ctx || !this.sfxOn) return; const ctx = this.ctx, t = this.sfxTime();
     if (!this.noiseBuf) { const n = ctx.sampleRate, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; this.noiseBuf = buf; }
     const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq || 900; const g = ctx.createGain();
@@ -198,13 +211,30 @@ export const Sound = {
   land() { if (this.sfx('action')) return; this.noise(0.12, 0.1, 500); },
   roll() { if (this.sfx('action')) return; this.noise(0.28, 0.14, 700); },
   flip() { if (this.sfx('action')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
-  coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
+  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с чекушкой.
+  // Пока файла assets/sounds/book.mp3 нет — играет шорох страниц (синтез).
+  book() { if (this.sfx('book')) return; this.noise(0.18, 0.12, 2600); this.tone(520, 380, 0.14, 'triangle', 0.07); },
+  coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
   // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
   stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   crash() { if (this.sfx('hit')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
-  growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
-  click() { if (this.sfx('click')) return; this.tone(650, 650, 0.05, 'sine', 0.1); },
+  growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
+  // Клик по кнопке. Строго одноголосый и полностью детерминированный: одна и та же нота, одна
+  // и та же громкость, никакого разброса. Правится только константами здесь: CLICK_F / CLICK_V.
+  // Огибающая строится от sfxTime(), а не от currentTime — именно отсюда брались «провалы»
+  // громкости на подтормаживающем кадре (см. SFX_LEAD).
+  click() {
+    if (this.sfx('click')) return;
+    if (!this.ctx || !this.sfxOn) return;
+    const t = this.sfxTime();
+    if (this.clickVoice) { try { this.clickVoice.stop(t); } catch (e) {} }
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(CLICK_F, t);
+    g.gain.setValueAtTime(CLICK_V, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t + 0.07);
+    this.clickVoice = o;
+  },
   // Fallback — СВОЙ синтез, а не делегирование в stumble(): та теперь сама проверяет
   // общий банк-ключ 'hit', и если у тебя уже есть hit.mp3 (для столкновений), но ещё нет
   // ui_denied.mp3, магазин при нехватке чекушек играл бы чужой звук столкновения.

@@ -234,7 +234,7 @@ function updateIntro(dt) {
     n.legL.rotation.x = s * 0.55; n.legR.rotation.x = -s * 0.55; n.armL.rotation.x = -s * 0.4; n.armR.rotation.x = U.damp(n.armR.rotation.x, -0.7, 4, dt); n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.03;
   } else if (t < 2.0) {
     n.legL.rotation.x = U.damp(n.legL.rotation.x, 0, 8, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, t < 1.45 ? -1.55 : -2.4, 6, dt);
-    if (!intro.grab && t >= 1.3) { intro.grab = true; diaryTaken(true); U.Sound.coin(); }
+    if (!intro.grab && t >= 1.3) { intro.grab = true; diaryTaken(true); U.Sound.book(); }
   } else {
     if (!intro.turn) { intro.turn = true; intro.faceY = 0; }
     if (!intro.hop && player.grounded) { player.vy = 4.4; player.grounded = false; intro.hop = true; U.Sound.jump(); }

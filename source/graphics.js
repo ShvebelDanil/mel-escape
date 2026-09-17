@@ -159,6 +159,10 @@ export function loadTextures() {
       const t = TEX.get('bottle');
       texBottle = (t && t.image && t.image.width > 1) ? t : makeBottleFallbackTex();
     }),
+    // Доска класса на главном экране: одна-единственная картинка, живёт вне серий.
+    // Ждём её здесь же — класс собирается сразу после loadTextures(), и к этому моменту
+    // уже должно быть известно, класть меш с картинкой или оставить пустое полотно.
+    TEX.load('classBoard').then(t => { classBoardTex = (t && t.image && t.image.width > 1) ? t : null; }),
     // Пользовательские серии картинок (poster1, poster2, … и board1, board2, …) — сколько бы их
     // ни добавили, просто кладутся в assets/textures/ под этими именами, без правок кода.
     ...PIC_SERIES.map(s => TEX.discoverSeries(s).then(keys => setPicKeys(s, keys))),
@@ -204,6 +208,10 @@ function makeGrannyFaceTex() {
 }
 
 export let floorTex, wallTex, lockerTex, shelfTex, signTex;
+// Картинка доски в классе (главный экран): null, пока файла assets/textures/class_board.*
+// нет — тогда на доске остаётся просто тёмное полотно. Никуда, кроме buildClassroom(),
+// не передаётся, поэтому на других объектах появиться не может.
+export let classBoardTex = null;
 // Серии пользовательских файловых картинок: постеры на стенах (poster1, poster2, …), доски
 // (board1, board2, …) и вид за окном (window1, window2, …). Ключи находит TEX.discoverSeries()
 // в loadTextures(). У каждой серии свой список ключей и свой реестр размещённых нод, поэтому

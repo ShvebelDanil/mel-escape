@@ -27,6 +27,10 @@ const WEBP_PROBE = 'data:image/webp;base64,UklGRlgAAABXRUJQVlA4WAoAAAAQAAAAAQAAA
 // объект в рантайме.
 export const MANIFEST = {
   bottle: { file: 'bottle', mips: true, aniso: false },
+  // Доска в классе на главном экране. Отдельный ключ (а не серия boardN), потому что картинка
+  // должна быть ровно одна и висеть только там: discoverSeries('board') такие имена не ищет,
+  // раздача картинок по обстаклам (assignPic) работает только со списком серии.
+  classBoard: { file: 'class_board', mips: true },
 };
 
 let ext = '.png';            // выбирается один раз в detectFormat()

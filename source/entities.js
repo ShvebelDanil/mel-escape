@@ -15,17 +15,29 @@ export function buildClassroom() {
   const g = new THREE.Group();
   GFX.put(g, GFX.tplane(U.WALL_X * 2 + 0.4, U.WALL_H, GFX.wallTex), 0, U.WALL_H / 2, U.CLASS_Z1);
   GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.box(4.7, 2.3, 0.03, '#364f3f'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
-  const sideW = U.WALL_X - U.DOOR_HALF;
+  // Картинка на доске класса: своя текстура classBoard, не серия boardN — она всегда одна и та же
+  // и существует ровно в этом меше. Полотно 4.6×2.3 = ровно 2:1, под это соотношение и файл.
+  // Материал-декаль (MTD) — чтобы PNG с прозрачным фоном (мел на доске) не показывал чёрный.
+  if (GFX.classBoardTex) { GFX.put(g, new THREE.Mesh(GFX.GPlane(4.6, 2.3), GFX.MTD(GFX.classBoardTex)), 0, 2.7, U.CLASS_Z1 + 0.16); }
+  // Стенка с проёмом. Ни одна грань здесь не должна ЛЕЖАТЬ В ОДНОЙ ПЛОСКОСТИ с соседней:
+  // при near=0.1 / far=140 точности буфера глубины не хватает, и совпадающие поверхности
+  // мерцают (z-fighting). Раньше так совпадали наружная грань простенка и плоскость стены
+  // коридора (обе ровно на x = ±WALL_X) — отсюда мерцающие полосы по краям проёма.
+  const outX = U.WALL_X + 0.06;            // наружная кромка уходит ЗА стену коридора и ею же закрыта
+  const sideW = outX - U.DOOR_HALF;
+  const facW = sideW - 0.06;               // накладки уже основы: изнутри −0.04 (прячется под наличник), снаружи −0.02
   for (const s of [-1, 1]) {
-    const px = s * (U.DOOR_HALF + sideW / 2);
+    const px = s * (U.DOOR_HALF + sideW / 2), fx = s * (U.DOOR_HALF + 0.04 + facW / 2);
     GFX.put(g, GFX.box(sideW, U.WALL_H, U.PART_T, '#f0ecd9'), px, U.WALL_H / 2, U.CLASS_Z0);
-    GFX.put(g, GFX.box(sideW, 2.09, U.PART_T + 0.02, '#a9c98c'), px, 0.36 + 2.09 / 2, U.CLASS_Z0);
-    GFX.put(g, GFX.box(sideW, 0.16, U.PART_T + 0.03, '#6f9459'), px, 2.45, U.CLASS_Z0);
-    GFX.put(g, GFX.box(sideW, 0.36, U.PART_T + 0.04, '#5c4633'), px, 0.18, U.CLASS_Z0);
-    GFX.put(g, GFX.box(0.14, U.DOOR_TOP, U.PART_T + 0.06, '#6d4c2f'), s * (U.DOOR_HALF + 0.07), U.DOOR_TOP / 2, U.CLASS_Z0);
+    GFX.put(g, GFX.box(facW, 2.15, U.PART_T + 0.02, '#a9c98c'), fx, 0.30 + 2.15 / 2, U.CLASS_Z0);   // низ утоплен в плинтус, а не встык
+    GFX.put(g, GFX.box(facW, 0.16, U.PART_T + 0.03, '#6f9459'), fx, 2.45, U.CLASS_Z0);
+    GFX.put(g, GFX.box(facW, 0.36, U.PART_T + 0.04, '#5c4633'), fx, 0.18, U.CLASS_Z0);
+    // наличник заходит на 1 см в проём, чтобы внутренняя грань простенка оказалась внутри него
+    GFX.put(g, GFX.box(0.14, U.DOOR_TOP, U.PART_T + 0.06, '#6d4c2f'), s * (U.DOOR_HALF + 0.06), U.DOOR_TOP / 2, U.CLASS_Z0);
   }
-  GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.28, U.WALL_H - U.DOOR_TOP, U.PART_T, '#f0ecd9'), 0, (U.WALL_H + U.DOOR_TOP) / 2, U.CLASS_Z0);
-  GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.28, 0.14, U.PART_T + 0.06, '#6d4c2f'), 0, U.DOOR_TOP + 0.07, U.CLASS_Z0);
+  // перемычка тоньше простенков — в зоне нахлёста её лицевая грань не совпадает с их гранью
+  GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.28, U.WALL_H - U.DOOR_TOP, U.PART_T - 0.02, '#f0ecd9'), 0, (U.WALL_H + U.DOOR_TOP) / 2, U.CLASS_Z0);
+  GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.32, 0.16, U.PART_T + 0.08, '#6d4c2f'), 0, U.DOOR_TOP + 0.06, U.CLASS_Z0);
   const sign = GFX.put(g, new THREE.Mesh(GFX.GPlane(1.3, 0.45), new THREE.MeshBasicMaterial({
     map: GFX.canvasTex(256, 96, (c) => { c.fillStyle = '#2e7d32'; c.fillRect(0, 0, 256, 96); c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(6, 6, 244, 84); c.fillStyle = '#ffffff'; c.font = 'bold 52px Arial'; c.textAlign = 'center'; c.fillText('ВЫХОД', 128, 66); })
   })), 0, U.DOOR_TOP + 0.5, U.CLASS_Z0 - U.PART_T / 2 - 0.01); sign.rotation.y = Math.PI;

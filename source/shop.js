@@ -102,7 +102,8 @@ function action() {
   const noun = mode === 'pets' ? 'питомца' : 'скина';
   if (c.isOwned(s.id)) {
     // Смена уже купленного скина/питомца — не покупка и не сбор монеты, обычный клик UI.
-    if (c.select(s.id)) { U.Sound.click(); refresh(); }
+    // Свой Sound.click() тут не нужен: кнопка обёрнута в act(), он уже прозвучал.
+    if (c.select(s.id)) refresh();
     return;
   }
   if (U.save.currency < s.price) {
