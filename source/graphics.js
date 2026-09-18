@@ -142,6 +142,49 @@ export function freezeCharacter(node) {
 }
 export function finalizeStatic(group) { return freezeStatic(pruneEmpty(bakeStatic(group))); }
 
+// Одноразовая «фотография» персонажа в картинку (data URL) — нужна окну заданий, где
+// силуэт секретного скина показывается обычным <img>. Рисуем во временный буфер и тут же
+// его освобождаем: в видеопамяти после вызова ничего не остаётся, игровая сцена и камера
+// не трогаются. SS=2 — рендерим вдвое крупнее и ужимаем через canvas: в three r128 у
+// render target нет мультисэмплинга, а так край получается сглаженным.
+export function renderCharacterShot(node, w, h) {
+  if (!renderer || !node || !node.root) return '';
+  const SS = 2, rw = w * SS, rh = h * SS;
+  const rt = new THREE.WebGLRenderTarget(rw, rh);
+  const sc = new THREE.Scene();
+  // Тот же свет, что и на игровой сцене (см. init) — иначе цветной скин на картинке
+  // выглядел бы иначе, чем в магазине.
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x77808c, 0.95));
+  const l1 = new THREE.DirectionalLight(0xfff0d6, 0.65); l1.position.set(3, 10, 4); sc.add(l1);
+  const l2 = new THREE.DirectionalLight(0xd6e4ff, 0.3); l2.position.set(-4, 6, -6); sc.add(l2);
+  const parent = node.root.parent;                 // нода может висеть в игровой сцене — вернём её на место
+  sc.add(node.root);
+  const cam = new THREE.PerspectiveCamera(28, w / h, 0.5, 20);
+  cam.position.set(0, 1, 4.6); cam.lookAt(0, .95, 0);
+  const prevTarget = renderer.getRenderTarget(), prevAlpha = renderer.getClearAlpha();
+  const prevColor = renderer.getClearColor(new THREE.Color());
+  renderer.setClearColor(0x000000, 0);             // прозрачный фон картинки
+  renderer.setRenderTarget(rt);
+  renderer.clear();
+  renderer.render(sc, cam);
+  const buf = new Uint8Array(rw * rh * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, rw, rh, buf);
+  renderer.setRenderTarget(prevTarget);
+  renderer.setClearColor(prevColor, prevAlpha);
+  sc.remove(node.root);
+  if (parent) parent.add(node.root);
+  rt.dispose();
+  // WebGL отдаёт строки снизу вверх — переворачиваем при переносе в canvas.
+  const big = document.createElement('canvas'); big.width = rw; big.height = rh;
+  const bctx = big.getContext('2d'), img = bctx.createImageData(rw, rh);
+  for (let y = 0; y < rh; y++) img.data.set(buf.subarray((rh - 1 - y) * rw * 4, (rh - y) * rw * 4), y * rw * 4);
+  bctx.putImageData(img, 0, 0);
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d'); octx.imageSmoothingQuality = 'high';
+  octx.drawImage(big, 0, 0, w, h);
+  return out.toDataURL('image/png');
+}
+
 function makeBottleFallbackTex() {
   return canvasTex(64, 128, (g) => {
     g.clearRect(0, 0, 64, 128); g.fillStyle = '#3fa66b';

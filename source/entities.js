@@ -3,8 +3,9 @@ import * as GFX from './graphics.js';
 import * as SK from './skins.js';
 import { createGrannyVisual } from '../assets/models/granny-visual.js';
 
-export function buildMel(skinId) {
-    return SK.buildSkinNode(skinId || SK.selectedId());
+export function buildMel(skinId, dark) {
+    // dark — чёрный силуэт вместо модели (закрытый секретный скин в магазине)
+    return SK.buildSkinNode(skinId || SK.selectedId(), dark);
 }
 
 export function buildGranny() {

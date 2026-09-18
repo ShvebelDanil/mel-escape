@@ -1,5 +1,6 @@
 import * as U from './utils.js';
 import * as TEX from './textures.js';
+import * as SK from './skins.js';
 
 // ===== Реестр заданий =====
 // Чтобы добавить/изменить задание — правится только этот массив:
@@ -32,6 +33,21 @@ let liveDist = 0, liveBottles = 0;
 export function setLive(dist, bottles) { liveDist = dist; liveBottles = bottles; }
 
 export const isDone = id => U.save.questsDone.indexOf(id) >= 0;
+// Сколько заданий из реестра закрыто. Считаем по QUESTS, а не по длине save.questsDone:
+// в сейве могут остаться id заданий, которых в игре уже нет.
+export function doneCount() {
+  let n = 0;
+  for (let i = 0; i < QUESTS.length; i++) if (isDone(QUESTS[i].id)) n++;
+  return n;
+}
+export const allDone = () => doneCount() >= QUESTS.length;
+
+// Приз за полный комплект заданий — секретный скин (SKINS[...].secret в source/skins.js).
+// Выдаётся молча и только один раз; true — если выдали прямо сейчас.
+function grantSecret() {
+  const s = SK.secretSkin();
+  return !!s && allDone() && SK.grant(s.id);
+}
 
 // Проверка выполнения. Вызывается из игрового цикла (смена метра, сбор чекушки),
 // поэтому внутри — обычный цикл по индексу без временных объектов и без for..of:
@@ -47,7 +63,11 @@ export function check() {
     toast(q);
     done++;
   }
-  if (done) { U.persistSave(); if (isOpen(U.UI.questsModal)) render(); }
+  if (done) {
+    if (grantSecret()) secretToast();
+    U.persistSave();
+    if (isOpen(U.UI.questsModal)) render();
+  }
   return done;
 }
 
@@ -62,6 +82,20 @@ function toast(q) {
   el.querySelector('.qt-name').textContent = q.name;
   el.querySelector('.qt-reward img').src = TEX.url('bottle');
   el.querySelector('.qt-reward span').textContent = '+' + q.reward;
+  pushToast(box, el);
+}
+
+// Тост об открытии секретного скина: блока награды нет — приз выдаётся не чекушками.
+function secretToast() {
+  const box = U.UI.questToasts; if (!box) return;
+  const el = document.createElement('div');
+  el.className = 'quest-toast';
+  el.innerHTML = '<div class="qt-check">' + ico('ic-shirt') + '</div>' +
+    '<div class="qt-body"><div class="qt-title">Открыт секретный скин!</div><div class="qt-name">Забери его в магазине</div></div>';
+  pushToast(box, el);
+}
+
+function pushToast(box, el) {
   box.appendChild(el);
   // Контейнер — flex-колонка, поэтому несколько подряд выполненных заданий
   // встают друг под другом; самые старые убираем, чтобы не залить пол-экрана.
@@ -76,6 +110,7 @@ function toast(q) {
 // Перестраивается только при открытии окна (и при выполнении задания с открытым окном),
 // не в игровом цикле — поэтому создавать узлы здесь нормально.
 export function render() {
+  renderSecret();
   const list = U.UI.questsList; if (!list) return;
   const bottleUrl = TEX.url('bottle');
   list.innerHTML = '';
@@ -98,6 +133,29 @@ export function render() {
   }
 }
 
+// Баннер приза: прогресс по ВСЕМ заданиям плюс картинка настоящей модели —
+// чёрный силуэт, пока скин закрыт, и сам скин после выдачи. Картинка запрашивается
+// лениво и только один раз на состояние (data-open помнит, что уже стоит в <img>).
+function renderSecret() {
+  const el = U.UI.secretQuest; if (!el) return;
+  const s = SK.secretSkin();
+  U.show(el, !!s);
+  if (!s) return;
+  const open = SK.isOwned(s.id), cur = doneCount();
+  el.dataset.done = open ? '1' : '0';
+  el.querySelector('.sq-sub').textContent = open
+    ? 'Скин открыт — забери его в магазине'
+    : 'Выполни все задания и получи секретный скин';
+  el.querySelector('.q-bar i').style.width = Math.round(cur / QUESTS.length * 100) + '%';
+  el.querySelector('.q-prog').textContent = cur + ' / ' + QUESTS.length;
+  const img = el.querySelector('.sq-shot img');
+  const want = open ? '1' : '0';
+  if (img && img.dataset.open !== want) {
+    const url = SK.secretShot(open);
+    if (url) { img.src = url; img.dataset.open = want; }
+  }
+}
+
 // ===== Модалки =====
 const isOpen = el => !!el && !el.classList.contains('hidden');
 export const modalOpen = () => isOpen(U.UI.settingsModal) || isOpen(U.UI.questsModal) || isOpen(U.UI.soonModal);
@@ -109,6 +167,8 @@ export function openSoon() { closeAll(); U.show(U.UI.soonModal, true); }
 // Свои биндинги (как в shop.js): main.js остаётся точкой входа, но не тащит на себе
 // внутренние кнопки окон заданий/настроек.
 export function initQuests() {
+  // Старый сейв мог закрыть все задания ещё до появления приза — выдаём скин молча.
+  grantSecret();
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   for (const id of ['settingsClose', 'questsClose', 'soonClose', 'soonOkBtn']) {
     const el = U.$(id); if (el) el.addEventListener('click', act(closeAll));

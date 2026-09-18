@@ -125,8 +125,8 @@ function showMenu() { setupMenuScene(); QST.closeAll(); QST.check(); U.screens('
 function openShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open(); }
 function openPetsShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open('pets'); }
 function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
-function applyPlayerSkin(id) {
-  const next = ENT.buildMel(id); if (next === player.node) return;
+function applyPlayerSkin(id, dark) {
+  const next = ENT.buildMel(id, dark); if (next === player.node) return;
   const old = player.node;
   if (old) { GFX.scene.remove(old.root); next.diary.visible = old.diary.visible; }
   player.node = next; GFX.scene.add(next.root);
