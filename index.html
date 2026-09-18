@@ -8,6 +8,12 @@
      параллельно с three.js. Браузер без WebP пропустит строку из-за type и возьмёт .png из JS. -->
 <link rel="preload" as="image" type="image/webp" href="assets/textures/bottle.webp">
 <style>
+  /* Общие цвета всплывающих окон: тёмно-серая панель и затемнение сцены под ней.
+     Намеренно БЕЗ backdrop-filter: размытие фона заставляет браузер держать копию всего
+     экрана в отдельном GPU-буфере и пересчитывать её при каждом кадре — на мобильных
+     это самая дорогая часть UI. Лёгкая прозрачность даёт ощущение «поверх игры» бесплатно. */
+  :root { --panel-bg:rgba(32,36,35,0.90); --panel-scrim:rgba(0,0,0,0.52); }
+
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
     height:100%; overflow:hidden; background:#10151b;
@@ -57,9 +63,6 @@
   .btn.ad:active { box-shadow:0 1px 0 #1d7a36; }
 
   .stack-panel { display:flex; flex-direction:column; align-items:stretch; gap:12px; width:min(300px, 82vw); }
-  .pause-toggles { display:flex; gap:10px; }
-  .pause-toggles .icon-btn { flex:1 1 0; min-width:0; width:auto; height:48px; border-radius:14px; font-size:20px; }
-  .pause-toggles .icon-btn.off::after { left:50%; right:auto; width:22px; margin-left:-11px; }
 
   .stats-box {
     background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
@@ -139,16 +142,6 @@
   .new-record { background:#ffd94a; color:#5a3d00; font-weight:900; padding:4px 14px; border-radius:10px;
     font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:pulseNR 1s infinite alternate; }
   @keyframes pulseNR { from{transform:scale(1);} to{transform:scale(1.07);} }
-
-  .corner-btns { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right)); display:flex; gap:8px; }
-  .icon-btn { pointer-events:auto; cursor:pointer; width:44px; height:44px; border-radius:12px;
-    border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.4); color:#fff; font-size:20px;
-    position:relative; display:flex; align-items:center; justify-content:center; transition:opacity .15s ease; }
-  .icon-btn.off { opacity:.45; }
-  .icon-btn.off::after {
-    content:''; position:absolute; left:7px; right:7px; top:50%; height:2px;
-    background:#ff5252; border-radius:2px; transform:translateY(-50%) rotate(-45deg);
-  }
 
   #reviveBtn { display:flex; flex-direction:column; gap:2px; line-height:1.15; }
   #reviveBtn small { font-size:11px; font-weight:700; text-transform:none; letter-spacing:0; opacity:.85; }
@@ -231,10 +224,10 @@
   #skinCard {
     width:min(430px, calc(100% - 28px));
     margin:0 auto calc(20px + env(safe-area-inset-bottom));
-    background:rgba(8,16,26,0.82); border:1px solid rgba(255,255,255,0.16);
+    background:var(--panel-bg); border:1px solid rgba(255,255,255,0.16);
     border-radius:20px; padding:16px 20px 18px;
     display:flex; flex-direction:column; align-items:center; gap:8px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.5);
+    box-shadow:0 8px 20px rgba(0,0,0,0.45);
   }
   #skinName { font-size:clamp(20px,5.5vw,27px); font-weight:900; color:#fff; letter-spacing:.5px; }
   #skinDesc { font-size:clamp(12px,3.2vw,14px); color:#b8ccbe; line-height:1.35; }
@@ -264,12 +257,13 @@
   #skinDots i.on { background-color:#ffd94a; }
 
   #shopModal { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-    padding:20px; background:rgba(4,8,12,0.68); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+    padding:20px; background:var(--panel-scrim); }
   #shopModal .box {
     position:relative; width:min(390px,100%); text-align:center;
-    background:#16232f; border:1px solid rgba(255,255,255,0.16); border-radius:20px;
+    background:var(--panel-bg);
+    border:1px solid rgba(255,255,255,0.16); border-radius:20px;
     padding:26px 24px 22px; display:flex; flex-direction:column; align-items:center; gap:10px;
-    box-shadow:0 18px 46px rgba(0,0,0,0.6);
+    box-shadow:0 8px 20px rgba(0,0,0,0.45);
   }
   #shopModal .box img { height:56px; }
   #shopModalClose { position:absolute; top:10px; right:12px; appearance:none; border:none; background:transparent;
@@ -280,9 +274,241 @@
   #shopModalText { font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4; }
   #shopModalBtn { margin-top:6px; }
   #shopModal[data-kind="err"] #shopModalBtn { background:linear-gradient(180deg,#9aa2ab,#6f7780); color:#fff; box-shadow:0 5px 0 #4c535a; }
+
+  /* ===== Панель инструментов меню (настройки / задания / мини-игра) =====
+     Вертикальная колонка в правом верхнем углу. Живёт внутри #menu, поэтому
+     показывается/прячется вместе с меню — отдельной логики видимости не нужно.
+     Кнопки намеренно переиспользуют классы «Магазина»/«Питомцев»
+     (.menu-btn.menu-btn--secondary) — модификатор ниже задаёт только квадратную
+     форму, а цвет/тени/нажатие берутся из общего стиля меню. */
+  #menuTools {
+    position:absolute; top:calc(12px + env(safe-area-inset-top)); right:calc(12px + env(safe-area-inset-right));
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .menu-btn--tool {
+    flex:0 0 auto; padding:0;
+    width:clamp(44px,12vw,52px); height:clamp(44px,12vw,52px);
+  }
+  /* Иконки — одноцветные линейные SVG из спрайта (#ic-*), цвет наследуется
+     от кнопки через currentColor. Разноцветные эмодзи выбивались из палитры UI. */
+  .ic {
+    width:50%; height:50%; display:block; fill:none; stroke:currentColor;
+    stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round;
+  }
+
+  /* ===== Общая оболочка модалок меню (настройки / задания / заглушка мини-игры) ===== */
+  .menu-modal {
+    position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    padding:18px; background:var(--panel-scrim);
+  }
+  /* Панель повторяет карточку магазина (#skinCard): тот же фон, рамка, скругление и тень —
+     чтобы окна воспринимались как часть уже существующего интерфейса, а не как отдельный слой. */
+  .menu-modal .box {
+    position:relative; width:min(430px,100%); max-height:calc(100% - 20px);
+    display:flex; flex-direction:column; gap:12px;
+    background:var(--panel-bg);
+    border:1px solid rgba(255,255,255,0.16); border-radius:20px;
+    padding:18px 18px 20px; box-shadow:0 8px 20px rgba(0,0,0,0.45);
+  }
+  .modal-head { display:flex; align-items:center; gap:10px; padding-right:44px; }
+  .modal-head .h { position:relative; display:flex; align-items:center; gap:9px; padding-bottom:8px; }
+  /* Жёлтая черта — во всю строку заголовка, от иконки до конца слова:
+     .h — флекс-элемент, его ширина равна содержимому, поэтому left/right:0 дают ровно нужную длину. */
+  .modal-head .h::after { content:''; position:absolute; left:0; right:0; bottom:0; height:3px; border-radius:3px; background:#ffd94a; }
+  /* Иконка заголовка — в цвет самого заголовка. */
+  .modal-head .ico { display:flex; color:#fff; }
+  .modal-head .ico .ic { width:clamp(21px,5vw,26px); height:clamp(21px,5vw,26px); }
+  .modal-head .t { font-size:clamp(19px,5vw,25px); font-weight:900; color:#fff; text-transform:uppercase; letter-spacing:.6px; }
+  /* Крестик — уменьшенная копия кнопок меню (.menu-btn--secondary), чтобы не выбиваться. */
+  .modal-close {
+    position:absolute; top:13px; right:14px; appearance:none; cursor:pointer; font-family:inherit;
+    width:32px; height:32px; padding:0; border-radius:11px; color:#fff;
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 0 rgba(0,0,0,0.35);
+    transition:transform .06s ease, box-shadow .06s ease;
+  }
+  .modal-close:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,0.35); }
+  .modal-close .ic { width:15px; height:15px; }
+
+  /* Строка настройки и карточка задания — одна и та же «плитка»: тот же фон/рамка и
+     та же нижняя «ступенька», что у кнопок меню. */
+  .ui-tile {
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22);
+    border-radius:16px; box-shadow:0 3px 0 rgba(0,0,0,0.3);
+  }
+
+  /* ===== Настройки ===== */
+  #settingsList { display:flex; flex-direction:column; gap:10px; }
+  .set-row {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:9px 9px 9px 15px;
+  }
+  .set-row .n { font-size:clamp(13px,3.6vw,16px); font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
+
+  /* Ползунок громкости. Плитка .vol-row — та же .set-row, но в два ряда:
+     сверху подпись и процент, снизу иконка-индикатор и сам ползунок. */
+  .set-row.vol-row { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 12px; }
+  .vol-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  /* tabular-nums — цифры одной ширины, иначе процент дёргается при перетаскивании. */
+  .vol-val { font-size:clamp(12px,3.2vw,15px); font-weight:900; color:#ffd94a; font-variant-numeric:tabular-nums; }
+  .vol-ctl { display:flex; align-items:center; gap:11px; }
+  /* Иконка — индикатор состояния, не кнопка: на нулевой громкости перечёркивается красной чертой. */
+  .vol-ico { position:relative; flex:none; width:24px; height:24px; color:#fff; font-size:17px;
+    display:flex; align-items:center; justify-content:center; transition:opacity .15s ease; }
+  .vol-ico.off { opacity:.45; }
+  .vol-ico.off::after {
+    content:''; position:absolute; left:1px; right:1px; top:50%; height:2px;
+    background:#ff5252; border-radius:2px; transform:translateY(-50%) rotate(-45deg);
+  }
+  /* touch-action:none — без него на телефоне перетаскивание бегунка иногда перехватывает браузер.
+     min-width:0 обязателен: иначе ширина по умолчанию (~130px) не даёт ползунку сжаться в узкой панели. */
+  .vol-slider {
+    -webkit-appearance:none; appearance:none; flex:1 1 auto; min-width:0; height:20px;
+    margin:0; background:transparent; cursor:pointer; touch-action:none;
+  }
+  /* Заливку до бегунка рисуем одним градиентом по переменной --p (её ставит syncAudioUI в utils.js):
+     у WebKit нет ::-moz-range-progress, поэтому это единственный способ покрасить пройденную часть. */
+  .vol-slider::-webkit-slider-runnable-track {
+    height:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.18);
+    background:linear-gradient(90deg,#ffd94a 0 var(--p,100%), rgba(0,0,0,0.45) var(--p,100%) 100%);
+  }
+  .vol-slider::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:20px; height:20px; margin-top:-7px;
+    border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4);
+  }
+  .vol-slider::-moz-range-track { height:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.45); }
+  .vol-slider::-moz-range-progress { height:8px; border-radius:6px; background:#ffd94a; }
+  .vol-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4); }
+
+  /* ===== Задания ===== */
+  /* min-height:0 обязателен: без него flex-элемент не даёт себя сжать и список не скроллится,
+     а вылезает за пределы панели на маленьких экранах. */
+  #questsList { display:flex; flex-direction:column; gap:10px; overflow-y:auto; min-height:0; padding:2px 2px 5px; }
+  .quest-card {
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; text-align:left;
+    padding:10px 11px;
+  }
+  .quest-card[data-done="1"] { background:rgba(47,174,78,0.16); border-color:rgba(126,224,129,0.42); }
+  /* Квадрат иконки — как тёмные плашки в остальном UI (.stats-box / #shopTabs). */
+  .q-icon {
+    width:38px; height:38px; border-radius:12px; flex:none; color:#ffd94a;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .q-icon .ic { width:21px; height:21px; }
+  .quest-card[data-done="1"] .q-icon { color:#8ce39a; border-color:rgba(126,224,129,0.35); }
+  .q-main { min-width:0; } /* иначе длинное название распирает грид и прогресс-бар уезжает из карточки */
+  .q-name { font-size:clamp(12px,3.2vw,14px); font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:.3px; line-height:1.25; }
+  .q-row { display:flex; align-items:center; gap:8px; margin-top:7px; }
+  .q-bar { flex:1 1 auto; min-width:0; height:9px; border-radius:6px; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.1); overflow:hidden; }
+  .q-bar i { display:block; height:100%; border-radius:6px; background:linear-gradient(90deg,#ffe066,#ffb400); }
+  .quest-card[data-done="1"] .q-bar i { background:linear-gradient(90deg,#8ce39a,#2fae4e); }
+  .q-prog { font-size:11px; font-weight:800; color:#b8ccbe; white-space:nowrap; }
+  .q-check { display:flex; color:#8ce39a; }
+  .q-check .ic { width:14px; height:14px; stroke-width:2.6; }
+  .q-reward {
+    flex:none; min-width:68px; display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); border-radius:12px; padding:6px 8px;
+  }
+  .q-reward .l { font-size:9px; text-transform:uppercase; letter-spacing:.6px; color:#b8ccbe; }
+  .q-reward .v { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; }
+  .q-reward .v img { height:1.15em; }
+
+  /* ===== Баннер секретного скина (награда за ВСЕ задания) =====
+     Та же плитка, что у карточек заданий, но с жёлтой рамкой: это приз, а не задание.
+     Силуэт справа — обычная картинка (data URL), её один раз «фотографирует»
+     source/skins.js с настоящей модели, поэтому фильтры/маски тут не нужны. */
+  #secretQuest {
+    flex:none; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px;
+    text-align:left; padding:10px 11px; border-color:rgba(255,217,74,0.45);
+  }
+  #secretQuest[data-done="1"] { background:rgba(47,174,78,0.16); border-color:rgba(126,224,129,0.42); }
+  #secretQuest[data-done="1"] .q-icon { color:#8ce39a; border-color:rgba(126,224,129,0.35); }
+  #secretQuest[data-done="1"] .q-bar i { background:linear-gradient(90deg,#8ce39a,#2fae4e); }
+  .sq-sub { font-size:11px; color:#b8ccbe; line-height:1.3; margin-top:3px; }
+  .sq-shot { position:relative; flex:none; width:52px; height:68px; }
+  .sq-shot img { width:100%; height:100%; object-fit:contain; object-position:bottom; }
+  /* Знак вопроса поверх силуэта — пока скин не открыт. */
+  .sq-shot b { position:absolute; left:50%; top:30%; transform:translate(-50%,-50%);
+    font-size:22px; font-weight:900; color:#ffd94a; }
+  #secretQuest[data-done="1"] .sq-shot b { display:none; }
+
+  /* ===== Уведомление о выполненном задании =====
+     Контейнер — колонка: несколько уведомлений подряд выстраиваются друг под другом,
+     а не накладываются. pointer-events:none, чтобы не перехватывать свайпы управления. */
+  #questToasts {
+    position:fixed; top:calc(10px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    z-index:30; pointer-events:none; width:min(360px, calc(100% - 24px));
+    display:flex; flex-direction:column; align-items:stretch; gap:8px;
+  }
+  .quest-toast {
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px;
+    background:rgba(32,36,35,0.94);
+    border:1px solid rgba(126,224,129,0.45); border-radius:16px;
+    padding:9px 12px; box-shadow:0 6px 16px rgba(0,0,0,0.45);
+    animation:qtIn .32s cubic-bezier(.2,.9,.3,1.25);
+  }
+  .quest-toast.out { animation:qtOut .38s ease forwards; }
+  @keyframes qtIn { from { opacity:0; transform:translateY(-18px) scale(.94); } to { opacity:1; transform:none; } }
+  @keyframes qtOut { to { opacity:0; transform:translateY(-10px) scale(.96); } }
+  .qt-check {
+    width:26px; height:26px; border-radius:50%; flex:none;
+    background:linear-gradient(180deg,#7ee081,#2fae4e); color:#06340f;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .qt-check .ic { width:15px; height:15px; stroke-width:2.8; }
+  .qt-body { min-width:0; }
+  .qt-title { font-size:12px; font-weight:900; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
+  .qt-name { font-size:11px; color:#b8ccbe; margin-top:2px; }
+  .qt-reward { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; white-space:nowrap; }
+  .qt-reward img { height:1.1em; }
 </style>
 </head>
 <body>
+<!-- Спрайт одноцветных иконок интерфейса: подключается через <use href="#ic-…">,
+     благодаря currentColor одна и та же иконка красится и в белый (кнопки меню),
+     и в жёлтый (заголовки модалок). Держим один раз, чтобы не дублировать пути. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="ic-gear" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="3.1"/>
+    <path d="M22.1 10L22.1 14L19.1 14L18.5 15.6L20.5 17.8L17.8 20.5L15.6 18.5L14 19.1L14 22.1L10 22.1L10 19.1L8.4 18.5L6.2 20.5L3.5 17.8L5.5 15.6L4.9 14L1.9 14L1.9 10L4.9 10L5.5 8.4L3.5 6.2L6.2 3.5L8.4 5.5L10 4.9L10 1.9L14 1.9L14 4.9L15.6 5.5L17.8 3.5L20.5 6.2L18.5 8.4L19.1 10Z"/>
+  </symbol>
+  <symbol id="ic-quests" viewBox="0 0 24 24">
+    <path d="M8.5 4H6.8A1.8 1.8 0 0 0 5 5.8v13.4A1.8 1.8 0 0 0 6.8 21h10.4a1.8 1.8 0 0 0 1.8-1.8V5.8A1.8 1.8 0 0 0 17.2 4h-1.7"/>
+    <rect x="8.5" y="2.6" width="7" height="3.4" rx="1.2"/>
+    <path d="M8.6 12.6l1.9 1.9 3.9-4"/>
+    <path d="M8.6 17.6h6.8"/>
+  </symbol>
+  <symbol id="ic-money" viewBox="0 0 24 24">
+    <rect x="2.6" y="5.8" width="18.8" height="12.4" rx="2.2"/>
+    <circle cx="12" cy="12" r="2.6"/>
+    <path d="M6.2 12h.02M17.8 12h.02"/>
+  </symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5.2 12.6l4.6 4.6L18.8 7.2"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></symbol>
+  <!-- Иконки заданий: id совпадает с полем icon в QUESTS (source/quests.js). -->
+  <symbol id="ic-flag" viewBox="0 0 24 24">
+    <path d="M6.4 21V3.2"/>
+    <path d="M6.4 4.4h11.2l-2.9 3.9 2.9 3.9H6.4z"/>
+  </symbol>
+  <symbol id="ic-play" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9.2"/>
+    <path d="M10.2 8.3l6 3.7-6 3.7z"/>
+  </symbol>
+  <symbol id="ic-bottle" viewBox="0 0 24 24">
+    <path d="M10 2.8h4v2.7l1.6 2.5c.4.6.6 1.3.6 2v9.6a1.8 1.8 0 0 1-1.8 1.8H9.6a1.8 1.8 0 0 1-1.8-1.8v-9.6c0-.7.2-1.4.6-2L10 5.5z"/>
+    <path d="M7.9 13.4h8.3"/>
+  </symbol>
+  <symbol id="ic-shirt" viewBox="0 0 24 24">
+    <path d="M8.2 3.2L4.2 5.4l1.9 3.5 1.7-.9V20.6h8.4V8l1.7.9 1.9-3.5-4-2.2a3.9 3.9 0 0 1-7.6 0z"/>
+  </symbol>
+  <symbol id="ic-paw" viewBox="0 0 24 24">
+    <circle cx="7.4" cy="9.6" r="1.9"/><circle cx="12" cy="7.5" r="2"/><circle cx="16.6" cy="9.6" r="1.9"/>
+    <path d="M12 12.3c2.7 0 4.8 2 4.8 4.2 0 1.7-1.3 2.9-3 2.9-.8 0-1.3-.4-1.8-.4s-1 .4-1.8.4c-1.7 0-3-1.2-3-2.9 0-2.2 2.1-4.2 4.8-4.2z"/>
+  </symbol>
+</defs></svg>
+
 <div id="game"></div>
 
 <!-- HUD -->
@@ -310,9 +536,10 @@
 <!-- Menu -->
 <div id="menu" class="overlay hidden">
   <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span></div>
-  <div class="corner-btns">
-    <button class="icon-btn" id="musicBtn" aria-label="Музыка">♪</button>
-    <button class="icon-btn" id="soundBtn" aria-label="Звук">🔊</button>
+  <div id="menuTools">
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
   </div>
   <h1 class="logo">Мэл<span>Побег из школы</span></h1>
   <div class="stats-box">
@@ -339,10 +566,7 @@
   <div class="stack-panel">
     <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
     <button class="btn" id="resumeBtn">▶ Продолжить</button>
-    <div class="pause-toggles">
-      <button class="icon-btn" id="pauseMusicBtn" aria-label="Музыка">♪</button>
-      <button class="icon-btn" id="pauseSoundBtn" aria-label="Звук">🔊</button>
-    </div>
+    <button class="btn ghost" id="pauseSettingsBtn">Настройки</button>
     <button class="btn ghost" id="restartBtn">Заново</button>
     <button class="btn ghost" id="pauseMenuBtn">В меню</button>
   </div>
@@ -400,6 +624,58 @@
     <button class="btn small" id="shopModalBtn">Ок</button>
   </div>
 </div>
+
+<!-- Настройки. Одно и то же окно открывают кнопка ⚙ в меню и кнопка «Настройки» в паузе,
+     поэтому ползунок каждой громкости в разметке ровно один. Значение хранится в
+     save.musicVol/save.soundVol (проценты), состояние UI проставляет syncAudioUI() в utils.js. -->
+<div id="settingsModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="settingsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t">Настройки</span></div></div>
+    <div id="settingsList">
+      <div class="set-row ui-tile vol-row">
+        <div class="vol-head"><span class="n">Музыка</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость музыки"></div>
+      </div>
+      <div class="set-row ui-tile vol-row">
+        <div class="vol-head"><span class="n">Звуки</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость звуков"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Задания (кнопка 📋). Карточки строит source/quests.js по массиву QUESTS. -->
+<div id="questsModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="questsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></span><span class="t">Задания</span></div></div>
+    <!-- Приз за все задания. Текст, прогресс и силуэт проставляет source/quests.js -->
+    <div id="secretQuest" class="ui-tile" data-done="0">
+      <div class="q-icon"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-shirt"/></svg></div>
+      <div class="q-main">
+        <div class="q-name">Секретный скин</div>
+        <div class="sq-sub"></div>
+        <div class="q-row"><div class="q-bar"><i></i></div><div class="q-prog"></div></div>
+      </div>
+      <div class="sq-shot"><img alt=""><b>?</b></div>
+    </div>
+    <div id="questsList"></div>
+  </div>
+</div>
+
+<!-- Заглушка будущей мини-игры (кнопка 💵) -->
+<div id="soonModal" class="menu-modal hidden">
+  <div class="box" style="align-items:center; text-align:center;">
+    <button class="modal-close" id="soonClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Скоро</span></div></div>
+    <div style="font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4;">Мини-игра на удвоение награды ещё в разработке. Загляни сюда позже!</div>
+    <button class="btn small" id="soonOkBtn">Ок</button>
+  </div>
+</div>
+
+<!-- Уведомления о выполненных заданиях (наполняется из source/quests.js) -->
+<div id="questToasts"></div>
 
 <script src="https://sdk.games.s3.yandex.net/sdk.js"></script>
 <!-- Подключаем библиотеку из новой папки lib -->

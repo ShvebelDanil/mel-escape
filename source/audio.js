@@ -39,8 +39,11 @@ const SFX = {
   hit:       { gain: 0.10, pitch: 0.02 },  // общий пул: предупреждение (warn) и смерть (death)
   growl:     { gain: 0.60, pitch: 0.03 },  // рык бабки (играет поверх hit)
   coin:      { gain: 0.08, pitch: 0.05 },  // сбор чекушки на бегу
+  book:      { gain: 0.10, pitch: 0.02 },  // интро: Мэл хватает дневник со стола
   purchase:  { gain: 0.10, pitch: 0.03 },  // успешная покупка скина/питомца в магазине
-  click:     { gain: 0.40, pitch: 0.01 },     // клик по кнопке
+  // Клик по кнопке — звук фиксированный: pitch 0 (скорость всегда 1.0), solo (см. ниже),
+  // громкость в одном ряду с остальными слотами. Менять высоту/громкость клика можно ТОЛЬКО здесь.
+  click:     { gain: 0.12, pitch: 0.00, solo: true },
   ui_denied: { gain: 0.10, pitch: 0.05 }      // в магазине не хватает чекушек
 };
 // Голос питомца: slot заводится автоматически для каждого питомца из pets.js,
@@ -171,17 +174,29 @@ function apply() {
 
 // ── публичный интерфейс (Sound.bank, см. utils.js) ─────────────────────────────
 
+// Одноголосые ключи (cfg.solo): звучит максимум одна копия, новый запуск обрывает предыдущий.
+// Нужно там, где одно нажатие может дёрнуть звук дважды (например, кнопка «ВЫБРАТЬ» в магазине:
+// клик из обёртки act() плюс клик из самой ветки выбора) — вместо двух наложенных копий
+// слышен ровно один звук. Заодно это гарантия, что клик всегда звучит одинаково.
+const solo = new Map();  // key → BufferSource, который сейчас играет
+
 const bank = {
   // true — семпл найден и отыгран (или намеренно заглушён), синтез-фолбэк не нужен.
   play(key) {
     const arr = buffers.get(key);
     if (!arr || !arr.length) return false;
     if (!Sound.sfxOn || !Sound.ctx || Sound.ctx.state !== 'running') return true;
+    const cfg = SFX[key];
     const src = Sound.ctx.createBufferSource();
-    src.buffer = arr.length > 1 ? arr[(Math.random() * arr.length) | 0] : arr[0];
-    const pitch = SFX[key].pitch;
-    if (pitch) src.playbackRate.value = 1 + (Math.random() * 2 - 1) * pitch;
+    // solo-ключ звучит ВСЕГДА одинаково: первый вариант файла, без выбора и без питча.
+    src.buffer = (arr.length > 1 && !cfg.solo) ? arr[(Math.random() * arr.length) | 0] : arr[0];
+    if (cfg.pitch && !cfg.solo) src.playbackRate.value = 1 + (Math.random() * 2 - 1) * cfg.pitch;
     src.connect(Sound.sfxGain);
+    if (cfg.solo) {
+      const prev = solo.get(key);
+      if (prev) { try { prev.stop(); } catch (e) {} }
+      solo.set(key, src);
+    }
     src.start();
     return true;
   },

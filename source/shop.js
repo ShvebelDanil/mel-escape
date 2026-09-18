@@ -2,6 +2,7 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
 import * as PT from './pets.js';
+import * as QST from './quests.js';
 import * as TEX from './textures.js';
 
 // Магазин живёт отдельно от игровой логики: он только ставит уже существующего
@@ -15,7 +16,8 @@ function cat() {
   return mode === 'pets'
     // при перелистывании питомца даём послушать его голос (assets/sounds/pet_<id>.mp3)
     ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, select: PT.select, preview: id => { deps.setPreviewPet(id); U.Sound.petVoice(id); } }
-    : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, select: SK.select, preview: id => deps.setPreviewSkin(id) };
+    // закрытый секретный скин показываем чёрным силуэтом — по нему не понять, что внутри
+    : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, select: SK.select, preview: id => deps.setPreviewSkin(id, SK.isLocked(id)) };
 }
 
 export function initShop(d) {
@@ -100,9 +102,16 @@ function goTo(i) {
 function action() {
   const c = cat(), s = c.list[index];
   const noun = mode === 'pets' ? 'питомца' : 'скина';
+  // Секретный скин не продаётся: объясняем, что его открывают задания.
+  if (mode === 'skins' && SK.isLocked(s.id)) {
+    showModal('err', 'СКИН ЗАКРЫТ!', 'Этот скин нельзя купить — он выдаётся за все задания. Выполнено ' + QST.doneCount() + ' из ' + QST.QUESTS.length + '.', 'ПОНЯТНО');
+    U.Sound.denied();
+    return;
+  }
   if (c.isOwned(s.id)) {
     // Смена уже купленного скина/питомца — не покупка и не сбор монеты, обычный клик UI.
-    if (c.select(s.id)) { U.Sound.click(); refresh(); }
+    // Свой Sound.click() тут не нужен: кнопка обёрнута в act(), он уже прозвучал.
+    if (c.select(s.id)) refresh();
     return;
   }
   if (U.save.currency < s.price) {
@@ -138,13 +147,15 @@ export function refreshCurrency() {
 function refresh() {
   refreshCurrency();
   const c = cat(), s = c.list[index], owned = c.isOwned(s.id), selected = c.selectedId() === s.id;
+  const locked = mode === 'skins' && SK.isLocked(s.id);
   if (U.UI.shopTabSkins) U.UI.shopTabSkins.dataset.active = mode === 'skins' ? '1' : '0';
   if (U.UI.shopTabPets) U.UI.shopTabPets.dataset.active = mode === 'pets' ? '1' : '0';
-  if (U.UI.skinName) U.UI.skinName.textContent = s.name;
-  if (U.UI.skinDesc) U.UI.skinDesc.textContent = s.desc;
+  if (U.UI.skinName) U.UI.skinName.textContent = locked ? '???' : s.name;
+  if (U.UI.skinDesc) U.UI.skinDesc.textContent = locked ? 'Секретный скин. Выполни все задания, чтобы открыть его.' : s.desc;
   const btn = U.UI.skinAction;
   if (btn) {
-    if (selected) { btn.textContent = '✓ ВЫБРАНО'; btn.dataset.state = 'selected'; }
+    if (locked) { btn.textContent = 'ЗАКРЫТО'; btn.dataset.state = 'locked'; }
+    else if (selected) { btn.textContent = '✓ ВЫБРАНО'; btn.dataset.state = 'selected'; }
     else if (owned) { btn.textContent = 'ВЫБРАТЬ'; btn.dataset.state = 'select'; }
     else if (U.save.currency >= s.price) { btn.textContent = 'КУПИТЬ'; btn.dataset.state = 'buy'; }
     else { btn.textContent = 'КУПИТЬ'; btn.dataset.state = 'locked'; }
@@ -154,12 +165,15 @@ function refresh() {
     if (dots.children.length !== c.list.length) { dots.innerHTML = ''; for (let i = 0; i < c.list.length; i++) dots.appendChild(document.createElement('i')); }
     for (let i = 0; i < dots.children.length; i++) dots.children[i].className = i === index ? 'on' : '';
   }
-  renderPriceRow(s, owned);
+  renderPriceRow(s, owned, locked);
 }
 
-function renderPriceRow(s, owned) {
+function renderPriceRow(s, owned, locked) {
   const row = U.UI.skinPrice; if (!row) return;
   row.innerHTML = '';
+  // У закрытого секретного скина вместо цены — прогресс по заданиям.
+  if (locked) { row.dataset.state = 'locked'; row.textContent = 'ЗАДАНИЯ ' + QST.doneCount() + ' / ' + QST.QUESTS.length; return; }
+  if (s.secret) { row.dataset.state = 'free'; row.textContent = 'ОТКРЫТ ЗА ЗАДАНИЯ'; return; }
   if (s.price === 0) { row.dataset.state = 'free'; row.textContent = 'БЕСПЛАТНО'; return; }
   if (owned) { row.dataset.state = 'free'; row.textContent = 'КУПЛЕНО'; return; }
   row.dataset.state = U.save.currency >= s.price ? 'price' : 'locked';
