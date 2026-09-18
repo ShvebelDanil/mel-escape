@@ -239,7 +239,7 @@ function beginRun() {
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
+function quickRestart() { QST.closeAll(); resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -265,7 +265,7 @@ function updateIntro(dt) {
 }
 let pausedW = -1, pausedH = -1; // размер холста на последнем отрисованном кадре паузы (см. loop)
 function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; pausedW = -1; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
-function resumeRun() { if (G.state !== 'paused') return; G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
+function resumeRun() { if (G.state !== 'paused') return; QST.closeAll(); G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
 function showOverScreen() {
   G.overShown = true; const m = Math.floor(G.dist);
   if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles;
@@ -472,9 +472,16 @@ function bindInput() {
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
   on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu); }));
   on('reviveBtn', act(() => { if (G.state !== 'over' || G.reviveUsed) return; U.show(U.UI.reviveBtn, false); U.showRewarded(revive, () => { if (G.state === 'over') U.show(U.UI.reviveBtn, true); }); }));
-  const toggle = key => () => { U.save[key] = U.save[key] ? 0 : 1; U.syncToggleUI(); U.Sound.applyToggles(); U.persistSave(); U.Sound.click(); };
-  on('musicBtn', toggle('music')); on('soundBtn', toggle('sound'));
-  on('pauseMusicBtn', toggle('music')); on('pauseSoundBtn', toggle('sound'));
+  on('pauseSettingsBtn', act(() => { if (G.state === 'paused') QST.openSettings(); }));
+  // Ползунки громкости. На 'input' (каждое движение) только применяем громкость — слышно сразу;
+  // сейв и клик вешаем на 'change' (отпустили бегунок), иначе каждое движение писало бы
+  // в localStorage и дёргало облачный сейв.
+  const volSlider = (id, key) => {
+    const el = U.$(id); if (!el) return;
+    el.addEventListener('input', () => { U.save[key] = U.clamp(el.value | 0, 0, 100); U.syncAudioUI(); U.Sound.ensure(); U.Sound.applyVolume(); });
+    el.addEventListener('change', () => { U.persistSave(); U.Sound.click(); });
+  };
+  volSlider('musicVol', 'musicVol'); volSlider('soundVol', 'soundVol');
 }
 
 let initStarted = false;
@@ -498,9 +505,9 @@ function init() {
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));
 }
 
-U.readLocalSave(); U.syncToggleUI();
+U.readLocalSave(); U.syncAudioUI();
 function boot() {
   if (typeof THREE === 'undefined') { const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка: не загружен three.js'; return; }
-  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => U.withTimeout(U.Sdk.loadCloud(), 5000)).then(() => { U.syncToggleUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка загрузки :('; } });
+  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => U.withTimeout(U.Sdk.loadCloud(), 5000)).then(() => { U.syncAudioUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка загрузки :('; } });
 }
 boot();

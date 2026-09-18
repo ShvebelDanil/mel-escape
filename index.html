@@ -63,9 +63,6 @@
   .btn.ad:active { box-shadow:0 1px 0 #1d7a36; }
 
   .stack-panel { display:flex; flex-direction:column; align-items:stretch; gap:12px; width:min(300px, 82vw); }
-  .pause-toggles { display:flex; gap:10px; }
-  .pause-toggles .icon-btn { flex:1 1 0; min-width:0; width:auto; height:48px; border-radius:14px; font-size:20px; }
-  .pause-toggles .icon-btn.off::after { left:50%; right:auto; width:22px; margin-left:-11px; }
 
   .stats-box {
     background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
@@ -145,15 +142,6 @@
   .new-record { background:#ffd94a; color:#5a3d00; font-weight:900; padding:4px 14px; border-radius:10px;
     font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:pulseNR 1s infinite alternate; }
   @keyframes pulseNR { from{transform:scale(1);} to{transform:scale(1.07);} }
-
-  .icon-btn { pointer-events:auto; cursor:pointer; width:44px; height:44px; border-radius:12px;
-    border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.4); color:#fff; font-size:20px;
-    position:relative; display:flex; align-items:center; justify-content:center; transition:opacity .15s ease; }
-  .icon-btn.off { opacity:.45; }
-  .icon-btn.off::after {
-    content:''; position:absolute; left:7px; right:7px; top:50%; height:2px;
-    background:#ff5252; border-radius:2px; transform:translateY(-50%) rotate(-45deg);
-  }
 
   #reviveBtn { display:flex; flex-direction:column; gap:2px; line-height:1.15; }
   #reviveBtn small { font-size:11px; font-weight:700; text-transform:none; letter-spacing:0; opacity:.85; }
@@ -358,6 +346,41 @@
   }
   .set-row .n { font-size:clamp(13px,3.6vw,16px); font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:.4px; }
 
+  /* Ползунок громкости. Плитка .vol-row — та же .set-row, но в два ряда:
+     сверху подпись и процент, снизу иконка-индикатор и сам ползунок. */
+  .set-row.vol-row { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 12px; }
+  .vol-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  /* tabular-nums — цифры одной ширины, иначе процент дёргается при перетаскивании. */
+  .vol-val { font-size:clamp(12px,3.2vw,15px); font-weight:900; color:#ffd94a; font-variant-numeric:tabular-nums; }
+  .vol-ctl { display:flex; align-items:center; gap:11px; }
+  /* Иконка — индикатор состояния, не кнопка: на нулевой громкости перечёркивается красной чертой. */
+  .vol-ico { position:relative; flex:none; width:24px; height:24px; color:#fff; font-size:17px;
+    display:flex; align-items:center; justify-content:center; transition:opacity .15s ease; }
+  .vol-ico.off { opacity:.45; }
+  .vol-ico.off::after {
+    content:''; position:absolute; left:1px; right:1px; top:50%; height:2px;
+    background:#ff5252; border-radius:2px; transform:translateY(-50%) rotate(-45deg);
+  }
+  /* touch-action:none — без него на телефоне перетаскивание бегунка иногда перехватывает браузер.
+     min-width:0 обязателен: иначе ширина по умолчанию (~130px) не даёт ползунку сжаться в узкой панели. */
+  .vol-slider {
+    -webkit-appearance:none; appearance:none; flex:1 1 auto; min-width:0; height:20px;
+    margin:0; background:transparent; cursor:pointer; touch-action:none;
+  }
+  /* Заливку до бегунка рисуем одним градиентом по переменной --p (её ставит syncAudioUI в utils.js):
+     у WebKit нет ::-moz-range-progress, поэтому это единственный способ покрасить пройденную часть. */
+  .vol-slider::-webkit-slider-runnable-track {
+    height:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.18);
+    background:linear-gradient(90deg,#ffd94a 0 var(--p,100%), rgba(0,0,0,0.45) var(--p,100%) 100%);
+  }
+  .vol-slider::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:20px; height:20px; margin-top:-7px;
+    border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4);
+  }
+  .vol-slider::-moz-range-track { height:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.45); }
+  .vol-slider::-moz-range-progress { height:8px; border-radius:6px; background:#ffd94a; }
+  .vol-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4); }
+
   /* ===== Задания ===== */
   /* min-height:0 обязателен: без него flex-элемент не даёт себя сжать и список не скроллится,
      а вылезает за пределы панели на маленьких экранах. */
@@ -543,10 +566,7 @@
   <div class="stack-panel">
     <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
     <button class="btn" id="resumeBtn">▶ Продолжить</button>
-    <div class="pause-toggles">
-      <button class="icon-btn" id="pauseMusicBtn" aria-label="Музыка">♪</button>
-      <button class="icon-btn" id="pauseSoundBtn" aria-label="Звук">🔊</button>
-    </div>
+    <button class="btn ghost" id="pauseSettingsBtn">Настройки</button>
     <button class="btn ghost" id="restartBtn">Заново</button>
     <button class="btn ghost" id="pauseMenuBtn">В меню</button>
   </div>
@@ -605,15 +625,22 @@
   </div>
 </div>
 
-<!-- Настройки (кнопка ⚙ в меню). Внутри — прежние переключатели музыки/звука:
-     id'шники musicBtn/soundBtn сохранены, поэтому syncToggleUI() работает без изменений. -->
+<!-- Настройки. Одно и то же окно открывают кнопка ⚙ в меню и кнопка «Настройки» в паузе,
+     поэтому ползунок каждой громкости в разметке ровно один. Значение хранится в
+     save.musicVol/save.soundVol (проценты), состояние UI проставляет syncAudioUI() в utils.js. -->
 <div id="settingsModal" class="menu-modal hidden">
   <div class="box">
     <button class="modal-close" id="settingsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
     <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t">Настройки</span></div></div>
     <div id="settingsList">
-      <div class="set-row ui-tile"><span class="n">Музыка</span><button class="icon-btn" id="musicBtn" aria-label="Музыка">♪</button></div>
-      <div class="set-row ui-tile"><span class="n">Звуки</span><button class="icon-btn" id="soundBtn" aria-label="Звук">🔊</button></div>
+      <div class="set-row ui-tile vol-row">
+        <div class="vol-head"><span class="n">Музыка</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость музыки"></div>
+      </div>
+      <div class="set-row ui-tile vol-row">
+        <div class="vol-head"><span class="n">Звуки</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость звуков"></div>
+      </div>
     </div>
   </div>
 </div>
