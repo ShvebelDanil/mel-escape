@@ -8,6 +8,11 @@
      параллельно с three.js. Браузер без WebP пропустит строку из-за type и возьмёт .png из JS. -->
 <link rel="preload" as="image" type="image/webp" href="assets/textures/bottle.webp">
 <style>
+  /* Общие цвета всплывающих окон: нейтрально-тёмный (без синевы) полупрозрачный фон панели
+     и затемнение сцены под ней. Прозрачность + blur нужны, чтобы окно читалось как стекло
+     поверх игры, а не как отдельный непрозрачный экран. */
+  :root { --panel-bg:rgba(22,30,28,0.68); --panel-scrim:rgba(8,14,12,0.38); }
+
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
     height:100%; overflow:hidden; background:#10151b;
@@ -263,10 +268,11 @@
   #skinDots i.on { background-color:#ffd94a; }
 
   #shopModal { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-    padding:20px; background:rgba(4,8,12,0.68); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+    padding:20px; background:var(--panel-scrim); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
   #shopModal .box {
     position:relative; width:min(390px,100%); text-align:center;
-    background:#16232f; border:1px solid rgba(255,255,255,0.16); border-radius:20px;
+    background:var(--panel-bg); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,0.16); border-radius:20px;
     padding:26px 24px 22px; display:flex; flex-direction:column; align-items:center; gap:10px;
     box-shadow:0 18px 46px rgba(0,0,0,0.6);
   }
@@ -305,14 +311,15 @@
   /* ===== Общая оболочка модалок меню (настройки / задания / заглушка мини-игры) ===== */
   .menu-modal {
     position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-    padding:18px; background:rgba(4,8,12,0.68); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    padding:18px; background:var(--panel-scrim); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
   }
   /* Панель повторяет карточку магазина (#skinCard): тот же фон, рамка, скругление и тень —
      чтобы окна воспринимались как часть уже существующего интерфейса, а не как отдельный слой. */
   .menu-modal .box {
     position:relative; width:min(430px,100%); max-height:calc(100% - 20px);
     display:flex; flex-direction:column; gap:12px;
-    background:rgba(8,16,26,0.92); border:1px solid rgba(255,255,255,0.16); border-radius:20px;
+    background:var(--panel-bg); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,0.16); border-radius:20px;
     padding:18px 18px 20px; box-shadow:0 18px 46px rgba(0,0,0,0.6);
   }
   .modal-head { display:flex; align-items:center; gap:10px; padding-right:44px; }
@@ -393,7 +400,8 @@
   }
   .quest-toast {
     display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px;
-    background:rgba(8,16,26,0.94); border:1px solid rgba(126,224,129,0.45); border-radius:16px;
+    background:rgba(22,30,28,0.82); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    border:1px solid rgba(126,224,129,0.45); border-radius:16px;
     padding:9px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.5), 0 0 18px rgba(80,220,120,0.18);
     animation:qtIn .32s cubic-bezier(.2,.9,.3,1.25);
   }
