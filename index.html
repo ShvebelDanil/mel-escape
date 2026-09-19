@@ -273,6 +273,17 @@
   #skinAction[data-state="select"]:active { box-shadow:0 1px 0 #1a5aa5; }
   #skinAction[data-state="selected"] { background:linear-gradient(180deg,#7ee081,#2fae4e); color:#06340f; box-shadow:0 5px 0 #1d7a36; cursor:default; }
 
+  /* Кнопка «купить за рекламу»: намеренно тихая — обычная кнопка покупки должна
+     оставаться главной, эта лишь подсказывает второй путь. */
+  #skinAdBtn { appearance:none; cursor:pointer; font-family:inherit; font-weight:700;
+    text-transform:uppercase; letter-spacing:.4px; font-size:clamp(11px,2.9vw,13px);
+    padding:6px 14px; border-radius:10px; color:#b8ccbe;
+    border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06);
+    transition:transform .06s ease, opacity .15s ease; }
+  #skinAdBtn:active { transform:translateY(2px); }
+  /* Пока крутится ролик кнопка гаснет (клик всё равно отсечёт adPending в shop.js) */
+  #skinAdBtn[data-busy="1"] { opacity:.5; }
+
   #skinDots { display:flex; gap:0; margin-top:2px; }
   /* padding + background-clip: точка визуально остаётся 8px, но зона клика 20px */
   #skinDots i { width:8px; height:8px; padding:5px; box-sizing:content-box; background-clip:content-box;
@@ -639,6 +650,8 @@
     <div id="skinDesc"></div>
     <div id="skinPrice" data-state="free"></div>
     <button id="skinAction" data-state="buy">Купить</button>
+    <!-- Альтернативная покупка за просмотр роликов. Текст, число роликов и показ/скрытие — source/shop.js -->
+    <button id="skinAdBtn" class="hidden" data-busy="0"></button>
     <div id="skinDots"></div>
   </div>
 </div>

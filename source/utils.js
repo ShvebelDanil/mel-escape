@@ -19,7 +19,7 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
   'newRecord', 'musicVol', 'soundVol', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
-  'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
+  'skinAction', 'skinAdBtn', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets',
   'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'soonModal', 'questToasts',
   'curAddBtn', 'adRewardModal', 'adRewardTitle', 'adRewardText', 'adRewardBtn'];
@@ -52,8 +52,15 @@ export const DESK_TOP_Y = 1.045;
 // мини-игр (пока всегда 0 — мини-игры нет) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [] };
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [], adProgress: {} };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+// adProgress: сколько роликов уже просмотрено за конкретный скин/питомца («skin:punk» -> 2).
+// Обычный объект, а не Map: он как есть уходит в JSON и в облако Яндекса.
+function cleanCounts(v) {
+  const out = {};
+  if (v && typeof v === 'object') for (const k in v) { const n = v[k] | 0; if (typeof k === 'string' && n > 0) out[k] = n; }
+  return out;
+}
 // Громкость из сейва. Старые сейвы (локальные и облачные) хранили только тумблер music/sound = 0|1 —
 // переводим его в проценты: было включено → 100 %, было выключено → 0 %.
 function readVol(v, legacy) {
@@ -68,7 +75,7 @@ export function readLocalSave() {
       save.best = s.best | 0; save.bottles = s.bottles | 0; save.musicVol = readVol(s.musicVol, s.music); save.soundVol = readVol(s.soundVol, s.sound);
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
-      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone);
+      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
     }
   } catch (e) {}
 }
@@ -93,7 +100,7 @@ function syncVolRow(id, v) {
 
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone }, false)).catch(() => {});
+  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress }, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -124,7 +131,7 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone', 'adProgress'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         // Только если в облаке эти поля вообще есть: иначе пустая облачная запись
@@ -144,6 +151,10 @@ export const Sdk = {
         if (typeof d.runs === 'number') save.runs = Math.max(save.runs, d.runs | 0);
         if (typeof d.miniGames === 'number') save.miniGames = Math.max(save.miniGames, d.miniGames | 0);
         for (const id of cleanStrList(d.questsDone)) if (save.questsDone.indexOf(id) < 0) save.questsDone.push(id);
+        // Просмотренные за вещь ролики мёржим по каждому ключу отдельно: на другом
+        // устройстве могли досмотреть больше, терять это нечестно.
+        const cloudAds = cleanCounts(d.adProgress);
+        for (const k in cloudAds) if (cloudAds[k] > (save.adProgress[k] | 0)) save.adProgress[k] = cloudAds[k];
       }
       return true;
     }).catch(() => false);

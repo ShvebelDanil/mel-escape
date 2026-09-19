@@ -84,3 +84,19 @@ export function initAdReward() {
   if (m) m.addEventListener('click', e => { if (e.target === m && !U.adBusy) { U.Sound.click(); close(); } });
   syncBtn();
 }
+
+// ===== Покупка вещей за ролики (магазин, source/shop.js) =====
+// Сколько роликов стоит вещь: её цена, делённая на награду за один ролик в меню.
+// Округляем вверх и не даём опуститься ниже одного — дешёвые вещи стоят 1 ролик.
+// Формула живая: поменяли AD_REWARD или цену в skins.js/pets.js — число само пересчиталось.
+export const adsFor = price => Math.max(1, Math.ceil((price | 0) / AD_REWARD));
+
+// Показать ролик «за вещь». Кулдаун плюсика здесь намеренно не действует: он сдерживает
+// фарм валюты, а вещь и так стоит несколько просмотров подряд.
+export function watchAd(onOk, onFail) {
+  if (U.adBusy) return onFail();
+  const y = U.Sdk.ysdk;
+  // Вне Яндекс.Игр рекламы нет — засчитываем просмотр, иначе фичу не проверить (как и в меню).
+  if (!y || !y.adv) return onOk();
+  U.showRewarded(onOk, onFail);
+}
