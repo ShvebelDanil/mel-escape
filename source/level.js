@@ -1,5 +1,6 @@
 import * as U from './utils.js';
 import * as ENT from './entities.js';
+import * as PWR from './powerups.js';
 import { G, player } from './main.js';
 
 // ─── физика действий ─────────────────────────────────────────────────────────────
@@ -308,10 +309,47 @@ function rewBlocked(r, v, z0) {
 }
 // Возвращает, сколько бутылок реально встало: если награду выбило препятствиями целиком,
 // кулдаун сбрасывать нельзя — иначе на трассе появляется участок вообще без бутылок.
+// Награда всегда ставится ОДИНОЧНЫМИ чекушками по центру ряда. Удвоение MAX WIN сюда не лезет
+// нарочно: спавн идёт на 170 м вперёд игрока, и бафф опаздывал бы на эти метры в обе стороны.
+// Раздвоением занимается powerups.js:updateDouble уже на подлёте игрока.
 function spawnReward(r, z0, v) {
   const n = rewCount(r, v); let placed = 0;
   for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (coinFree(r, z0, v)) { ENT.spawnCoin(U.LANES[r.l], _cy, z0 + _ct * v); placed++; } }
   return placed;
+}
+
+// ─── паверапы ────────────────────────────────────────────────────────────────────
+// Пикап ставится в СВОБОДНЫЙ РЯД РЯДОМ с маршрутом: игрок должен его заметить и свернуть.
+// Габарит для проверки места берём с запасом вокруг квада иконки (1.7 м нимба по высоте),
+// чтобы предмет не оказался внутри парты или под полотном баннера.
+const PU_HZ = 1.0, PU_Y0 = 0.45, PU_Y1 = 1.95;
+function puFree(l, t, z0, v) {
+  const cx = U.LANES[l], cz = z0 + t * v;
+  for (let i = 0; i < ENT.activeObstacles.length; i++) {
+    const o = ENT.activeObstacles[i];
+    if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - cz) >= o.hz + PU_HZ) continue;
+    if (PU_Y1 > o.y0 && PU_Y0 < o.y1) return false;
+  }
+  // Поверх награды тоже не лепим: иконка перекрыла бы чекушки и читалась бы как одна из них.
+  for (let i = 0; i < ENT.activeCoins.length; i++) {
+    const c = ENT.activeCoins[i];
+    if (Math.abs(c.x - cx) < 1.3 && Math.abs(c.z - cz) < 1.8) return false;
+  }
+  return true;
+}
+// Вызывать только ПОСЛЕ спавна препятствий и награды паттерна — иначе проверять нечего.
+// Если места не нашлось, тип остаётся «дозревшим» в powerups.js и попробует встать
+// на следующем паттерне: расписание от этого не сбивается.
+function tryPowerup(type, z0, v) {
+  const t0 = 0.35, t1 = b.len - 0.2;
+  if (t1 <= t0) return;
+  for (let k = 0; k < 8; k++) {
+    const t = U.rand(t0, t1);
+    b.routeLanes(t, busy);
+    if (busy.length !== 1) continue;            // в этот момент идёт смена полосы — «рядом» не определить
+    const l = adjLane(busy[0]);
+    if (puFree(l, t, z0, v)) { PWR.place(type, U.LANES[l], PWR.PU_Y, z0 + t * v); return; }
+  }
 }
 const gapRew = { k: 'line', l: 1, t0: 0, t1: 0, y: 0.95, must: false, time: 0 };
 
@@ -379,6 +417,13 @@ export function fillSpawns() {
       if (spawnReward(gapRew, z0, v)) Director.coinCd = U.rand(1.6, 3.0);
     }
     Director.coinCd -= gap + b.len;
+
+    // 5) паверап. Расписание живёт в powerups.js и тикает по МЕТРАМ трассы; кормим его
+    // метражом точки генерации (distAt), а не игрока — пикап встанет именно здесь.
+    // Дальше остаётся подобрать честное место: рядом с маршрутом, в свободном от препятствий ряду.
+    PWR.noteDist(distAt);
+    const pu = PWR.pendingType();
+    if (pu && Director.count >= 3) tryPowerup(pu, z0, v);
 
     G.nextZ = z0 + b.len * v;
     Director.tAir = _air - b.len; Director.tRoll = _roll - b.len; Director.tLane = _lane - b.len; Director.tNeed = _need - b.len;

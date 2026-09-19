@@ -314,7 +314,12 @@ export function clearObstacles(fromZ, toZ) { for (let i = activeObstacles.length
 // Бутылки: раньше каждая была THREE.Sprite, то есть отдельный draw call (в забеге до 20 за кадр).
 // Теперь все они — один меш из квадов, развёрнутых по базису камеры ровно так же, как это делает
 // спрайт, поэтому вид не меняется. Буферы созданы один раз, в кадре только перезапись координат.
-const COIN_MAX = 64, COIN_HW = 0.31, COIN_HH = 0.7; // после учащения наград замеренный пик в забеге 29, запас двукратный
+// Лимит поднят с 64: паверап MAX WIN (source/powerups.js) раздваивает чекушки в окне перед
+// игроком, то есть к замеренному пику 29 добавляются близнецы — со старым лимитом часть пар
+// молча терялась бы.
+// Квад бутылки — квадратный (COIN_HW = COIN_HH), потому что bottle.webp сам квадратный холст
+// 256×256: непропорциональный квад тянул бы картинку по одной из осей.
+const COIN_MAX = 96, COIN_HW = 0.7, COIN_HH = 0.7;
 // Зазоры вокруг бутылки при проверке на препятствия, м. По вертикали они АСИММЕТРИЧНЫ, и это
 // не произвол: квад бутылки высотой 2*COIN_HH = 1.4 м с центром в c.y, текстура заполняет его
 // почти целиком, то есть низ картинки уходит на 0.68 м ниже центра. Со старым общим зазором 0.32
@@ -342,11 +347,21 @@ export function initCoins() {
   coinMesh.frustumCulled = false; coinMesh.matrixAutoUpdate = false; coinMesh.updateMatrix(); coinMesh.renderOrder = 1;
   GFX.scene.add(coinMesh);
 }
+// Возвращает описатель (или null, если пул выбран): паверапу MAX WIN нужно дозаполнить
+// поля только что созданного близнеца.
 export function spawnCoin(x, y, z) {
-  if (activeCoins.length >= COIN_MAX) return;
+  if (activeCoins.length >= COIN_MAX) return null;
   const c = coinDescPool.pop() || {};
   c.x = x; c.y = y; c.z = z; c.phase = Math.random() * Math.PI * 2;
+  // pull/pv/vx..vz — состояние полёта к игроку под магнитом (source/powerups.js:updateMagnet).
+  // bx/tw/sp/pair — состояние пары под MAX WIN (там же, updateDouble): bx — центр ряда, от него
+  // считается разъезд; tw=1 у близнеца; sp — доля разъезда 0..1; pair=1 у оригинала с близнецом.
+  // Поля заводятся здесь, чтобы у описателя всегда была одна и та же форма (движок не пересобирает
+  // скрытый класс объекта в кадре), а паверапы в кадре ничего не аллоцировали.
+  c.pull = 0; c.pv = 0; c.vx = 0; c.vy = 0; c.vz = 0;
+  c.bx = x; c.tw = 0; c.sp = 0; c.pair = 0;
   activeCoins.push(c);
+  return c;
 }
 export function releaseCoin(i) { coinDescPool.push(activeCoins[i]); activeCoins.splice(i, 1); }
 export function updateCoins(bobT) {
@@ -358,7 +373,9 @@ export function updateCoins(bobT) {
   const rx = e[0] * COIN_HW, ry = e[1] * COIN_HW, rz = e[2] * COIN_HW;
   const ux = e[4] * COIN_HH, uy = e[5] * COIN_HH, uz = e[6] * COIN_HH;
   for (let i = 0; i < n; i++) {
-    const c = activeCoins[i], k = i * 12, cy = c.y + Math.sin(bobT + c.phase) * 0.09;
+    // Летящая под магнитом чекушка не покачивается: её ведёт собственная скорость,
+    // и синусоида поверх траектории читалась бы как дрожание.
+    const c = activeCoins[i], k = i * 12, cy = c.pull ? c.y : c.y + Math.sin(bobT + c.phase) * 0.09;
     coinPos[k] = c.x - rx + ux; coinPos[k + 1] = cy - ry + uy; coinPos[k + 2] = c.z - rz + uz;
     coinPos[k + 3] = c.x + rx + ux; coinPos[k + 4] = cy + ry + uy; coinPos[k + 5] = c.z + rz + uz;
     coinPos[k + 6] = c.x + rx - ux; coinPos[k + 7] = cy + ry - uy; coinPos[k + 8] = c.z + rz - uz;

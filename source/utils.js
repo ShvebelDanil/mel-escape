@@ -274,6 +274,13 @@ export const Sound = {
   book() { if (this.sfx('book')) return; this.noise(0.18, 0.12, 2600); this.tone(520, 380, 0.14, 'triangle', 0.07); },
   coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
+  // Поднятый паверап (source/powerups.js). Свой ключ банка — assets/sounds/powerup.mp3;
+  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычная чекушка.
+  powerup() {
+    if (this.sfx('powerup')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(660, 660, 0.09, 'square', 0.13, t); this.tone(880, 880, 0.09, 'square', 0.13, t + 0.07);
+    this.tone(1320, 1760, 0.22, 'triangle', 0.14, t + 0.14);
+  },
   // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
   stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   crash() { if (this.sfx('hit')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },

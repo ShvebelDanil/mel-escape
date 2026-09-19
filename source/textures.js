@@ -31,6 +31,12 @@ export const MANIFEST = {
   // должна быть ровно одна и висеть только там: discoverSeries('board') такие имена не ищет,
   // раздача картинок по обстаклам (assignPic) работает только со списком серии.
   classBoard: { file: 'class_board', mips: true },
+  // Иконки паверапов (source/powerups.js). Один и тот же файл работает и биллбордом на трассе,
+  // и <img> в HUD — качается ровно один раз. mips нужны: на трассе пикап видно с 70 м, без них
+  // иконка на дистанции рябит. aniso не нужен — квад всегда развёрнут лицом к камере.
+  magnet: { file: 'magnet', mips: true, aniso: false },
+  boots: { file: 'boots', mips: true, aniso: false },
+  double: { file: 'double', mips: true, aniso: false },
 };
 
 let ext = '.png';            // выбирается один раз в detectFormat()

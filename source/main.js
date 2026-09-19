@@ -9,6 +9,7 @@ import * as QST from './quests.js';
 import * as AUD from './audio.js';
 import * as TEX from './textures.js';
 import * as ADR from './adreward.js';
+import * as PWR from './powerups.js';
 
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
@@ -28,7 +29,7 @@ const PET_JUMP_T = 2 * U.JUMP_V / U.GRAVITY; // время полёта прыж
 const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. высота прыжка питомца
 const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
 const PET_VOICE_MIN = 8, PET_VOICE_MAX = 14; // разброс паузы между репликами питомца на бегу
-const FLIP_TIME = PET_JUMP_T * 0.78; // оборот заметно короче полёта — успеваем раскрыться и приземлиться в ровную стойку
+const FLIP_K = 0.78; // доля полёта, за которую проходит оборот: заметно короче — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
 
 function move(dir) {
@@ -36,14 +37,21 @@ function move(dir) {
   const nl = U.clamp(player.lane + dir, 0, 2);
   if (nl !== player.lane) { player.lane = nl; U.Sound.lane(); }
 }
+// Сила прыжка не константа: сапоги-бурмалды (source/powerups.js) поднимают её так, что
+// apex вырастает с 1.45 до ~3.1 м. Время полёта и окно трюка считаются от ТЕКУЩЕЙ силы,
+// иначе сальто крутилось бы по физике обычного прыжка.
+function jumpV() { return PWR.active.boots > 0 ? PWR.BOOTS_JUMP_V : U.JUMP_V; }
+const jumpT = jv => 2 * jv / U.GRAVITY;
 function jump() {
   if (G.state !== 'run' || !player.grounded) return;
-  player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0;
-  const dir = trickDir();
+  const jv = jumpV(), jt = jumpT(jv);
+  player.vy = jv; player.grounded = false; player.rolling = 0;
+  const dir = trickDir(jv, jt);
   // flip() и jump() делят один и тот же пул семплов ('action') — раньше вызывались
   // ОБА на трюковый прыжок и звук слышался дважды подряд. Теперь ровно один вызов на прыжок.
-  if (dir) { startSpin(dir, FLIP_TIME); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
+  if (dir) { startSpin(dir, jt * FLIP_K); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
   else { if (player.spinDir) { player.spinDir = 0; player.node.pivot.rotation.x = 0; } U.Sound.jump(); }
+  if (jv > U.JUMP_V) ENT.burst(player.x, player.groundY + 0.08, player.z, '#c5e1a5', 5, 2.6);   // пыль от толчка сапог
 }
 function roll() {
   if (G.state !== 'run') return;
@@ -53,22 +61,22 @@ function roll() {
 // Особый прыжок доступен только «осмысленному» прыжку: с платформы (парта, тележка)
 // или через препятствие в своём ряду, до которого игрок реально долетит.
 // Геометрия берётся из уже существующих полей препятствия (y0/y1 из OB_DEFS), отдельной таблицы типов нет.
-function trickJump() {
+function trickJump(jv, jt) {
   if (player.groundY > 0.01) return true; // спрыгиваем с парты/тележки
   for (const o of ENT.activeObstacles) {
     const dz = o.z - player.z;
     if (dz <= 0 || o.y0 > 0.01) continue; // позади или висит над головой (это подкат, а не перепрыгивание)
     if (nearestLane(o.x) !== player.lane) continue;
     const t = dz / Math.max(1, G.speed); // момент, когда игрок поравняется с препятствием
-    if (t > PET_JUMP_T) continue; // за этот прыжок не долетит
-    const h = U.JUMP_V * t - 0.5 * U.GRAVITY * t * t; // высота в этот момент — та же физика, что и в loop()
+    if (t > jt) continue; // за этот прыжок не долетит
+    const h = jv * t - 0.5 * U.GRAVITY * t * t; // высота в этот момент — та же физика, что и в loop()
     if (h >= o.y1 - U.PLATFORM_TOL) return true; // траектория реально проходит поверх препятствия
   }
   return false;
 }
 // 0 — обычный прыжок, 1 — сальто вперёд, -1 — сальто назад.
-function trickDir() {
-  if (!trickJump()) return 0;
+function trickDir(jv, jt) {
+  if (!trickJump(jv, jt)) return 0;
   const r = Math.random();
   return r < FLIP_CHANCE * 0.5 ? 1 : (r < FLIP_CHANCE ? -1 : 0);
 }
@@ -78,8 +86,14 @@ function nearestLane(x) { let best = 0, bd = 1e9; for (let i = 0; i < 3; i++) { 
 const hitsXZ = o => Math.abs(player.z - o.z) <= o.hz + U.HIT_Z && Math.abs(player.x - o.x) <= o.hw + U.HIT_W;
 function updateCollisions() {
   const rolling = player.rolling > 0; const py1 = player.y + (rolling ? 0.80 : 1.86);
+  // Сапоги забрасывают игрока на 3.1 м — прямо в подкатные препятствия, которые висят в воздухе
+  // (баннер 1.05–2.95, доска, лестница). Пока он в прыжке, такие препятствия его не трогают:
+  // иначе собственный бафф убивал бы игрока там, где раньше он спокойно подкатывался.
+  // На земле подкат работает как прежде.
+  const airSafe = PWR.active.boots > 0 && !player.grounded;
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) {
     const o = ENT.activeObstacles[i]; if (o.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseObstacle(i); continue; }
+    if (airSafe && o.y0 > 0.01) continue;
     if (!hitsXZ(o)) continue;
     if (player.y >= o.y1 - U.PLATFORM_TOL) continue;
     if (py1 <= o.y0 + 0.04) continue;
@@ -218,6 +232,7 @@ function resetRun() {
   G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveUsed = false; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
   G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); GFX.resetResolution();
+  PWR.reset();   // баффы и пикапы живут только внутри забега
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
 }
@@ -392,10 +407,21 @@ function loop(t) {
       if (player.y <= player.groundY && player.vy < 0) { player.y = player.groundY; player.vy = 0; player.grounded = true; player.squash = 0.18; U.Sound.land(); ENT.burst(player.x, player.groundY + 0.08, player.z, '#c9c2b4', 3, 1.4); }
     } else { player.y = player.groundY; player.grounded = true; }
     if (player.invuln > 0) player.invuln -= dt; if (granny.closeT > 0) { granny.closeT -= dt; if (granny.closeT <= 0) granny.targetZOff = -9.2; }
+    // Паверапы до сбора чекушек: магнит успевает подтянуть их на этом же кадре, а поднятый
+    // пикап начинает действовать сразу, не ожидая следующего.
+    const got = PWR.update(dt, player.x, player.y, player.z);
+    if (got) { U.Sound.powerup(); ENT.burst(player.x, player.y + 1.1, player.z, got.color, 8, 2.6); G.shake = Math.max(G.shake, 0.18); }
+    PWR.updateDouble(dt, player.z);   // раздвоение раньше магнита: подтягивать уже есть что
+    PWR.updateMagnet(dt, player.x, player.y, player.z);
+    PWR.updateHud(dt);
     const pcy = player.y + 0.95;
+    // В сапогах Мэл перелетает ряды выше обычного окна сбора, поэтому на время баффа окно
+    // растягивается ВНИЗ (PWR.BOOTS_REACH): всё, что оказалось под игроком, подбирается на лету.
+    const reachDown = PWR.active.boots > 0 ? PWR.BOOTS_REACH : 1.2;
     for (let i = ENT.activeCoins.length - 1; i >= 0; i--) {
       const c = ENT.activeCoins[i]; if (c.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseCoin(i); continue; }
-      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && Math.abs(pcy - c.y) < 1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); syncQuests(); }
+      const dy = pcy - c.y;                                   // >0 — чекушка ниже центра игрока
+      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && dy < reachDown && dy > -1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); syncQuests(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();
     for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg); } }
@@ -412,6 +438,7 @@ function loop(t) {
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
+  PWR.faceCamera();         // по той же причине здесь, а не в PWR.update()
   GFX.renderer.render(GFX.scene, GFX.camera);
   if (G.state === 'run') GFX.tuneResolution(dt); // мерим только забег: в меню первые кадры дороже из-за компиляции шейдеров
 }
@@ -500,6 +527,7 @@ function init() {
   for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
+  PWR.initPowerups();
   ADR.initAdReward();
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);

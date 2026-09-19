@@ -123,6 +123,37 @@
   #comboText.on span { animation:comboPop .3s ease; }
   @keyframes comboPop { 0%{transform:scale(0.4);} 60%{transform:scale(1.22);} 100%{transform:scale(1);} }
 
+  /* Паверапы: столбик почти-квадратных плашек в левом нижнем углу. Рамка, фон и радиус — те же,
+     что у #pauseBtn и .stats-box, чтобы индикатор читался как часть интерфейса игры.
+     Остаток времени — полоса внизу плашки: она масштабируется transform'ом по --p (0..1),
+     то есть браузер не пересчитывает ни layout, ни даже отрисовку — только композитинг.
+     Долю пишет powerups.js 10 раз в секунду, цвет --c ставится один раз из реестра типов.
+     Слот скрыт через display:none, .on заново запускает всплытие. */
+  #buffs {
+    position:fixed; left:calc(14px + env(safe-area-inset-left)); bottom:calc(16px + env(safe-area-inset-bottom));
+    display:flex; flex-direction:column; gap:8px; pointer-events:none; z-index:6;
+  }
+  .buff {
+    position:relative; width:72px; height:78px; display:none; --p:1; --c:#ffd54f;
+    border:1px solid rgba(255,255,255,0.25); border-radius:16px; overflow:hidden;
+    background:rgba(0,0,0,0.42); box-shadow:0 4px 12px rgba(0,0,0,0.45);
+  }
+  .buff.on { display:block; animation:buffPop .28s ease both; }
+  .buff::before {                                                   /* подложка полосы времени */
+    content:''; position:absolute; left:9px; right:9px; bottom:8px; height:6px;
+    border-radius:3px; background:rgba(255,255,255,0.16);
+  }
+  .buff-bar {
+    position:absolute; left:9px; right:9px; bottom:8px; height:6px; border-radius:3px;
+    background:var(--c); box-shadow:0 0 6px var(--c);
+    transform:scaleX(var(--p)); transform-origin:left center;
+  }
+  .buff img { position:absolute; left:0; right:0; top:9px; margin:0 auto; width:52px; height:52px; object-fit:contain; display:block; }
+  /* последние секунды баффа */
+  .buff.low img, .buff.low .buff-bar { animation:buffBlink .6s ease-in-out infinite; }
+  @keyframes buffPop { 0%{transform:scale(0.4); opacity:0;} 65%{transform:scale(1.14); opacity:1;} 100%{transform:scale(1); opacity:1;} }
+  @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
   #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
     box-shadow:inset 0 0 140px 40px rgba(220,30,30,0.85); }
   #flash.on { animation:flashAnim .5s ease-out; }
@@ -559,6 +590,13 @@
     <div id="bottleCount"><span id="bottleNum">0</span><img id="bottleIcon" alt=""></div>
   </div>
   <div id="comboText"><span></span></div>
+  <!-- Индикаторы активных паверапов. Слоты созданы заранее (один на тип) и просто прячутся:
+       powerups.js в забеге только переключает класс .on и пишет переменную --p, DOM не создаётся. -->
+  <div id="buffs">
+    <div class="buff" id="buff_magnet"><span class="buff-bar"></span><img alt=""></div>
+    <div class="buff" id="buff_boots"><span class="buff-bar"></span><img alt=""></div>
+    <div class="buff" id="buff_double"><span class="buff-bar"></span><img alt=""></div>
+  </div>
 </div>
 <div id="flash"></div>
 <div id="yell"></div>
