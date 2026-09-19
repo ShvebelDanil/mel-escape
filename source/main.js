@@ -8,6 +8,7 @@ import * as SHOP from './shop.js';
 import * as QST from './quests.js';
 import * as AUD from './audio.js';
 import * as TEX from './textures.js';
+import * as ADR from './adreward.js';
 
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
@@ -496,9 +497,10 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
+  ADR.initAdReward();
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();

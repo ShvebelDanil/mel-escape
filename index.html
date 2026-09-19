@@ -155,6 +155,29 @@
   }
   .cur-badge img { height:1.5em; }
   .menu-cur { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); }
+  /* Плюсик у бейджа чекушек — вход в окно «реклама за валюту» (source/adreward.js).
+     Живёт внутри бейджа, поэтому показывается/прячется вместе с меню. */
+  .cur-add {
+    appearance:none; cursor:pointer; font-family:inherit; line-height:1;
+    flex:none; width:1.45em; height:1.45em; margin-left:2px; padding:0;
+    border-radius:50%; border:1px solid rgba(255,255,255,0.22);
+    background:rgba(255,255,255,0.1); color:#fff;
+    box-shadow:0 2px 0 rgba(0,0,0,0.35);
+    position:relative;
+    transition:transform .06s ease, box-shadow .06s ease, opacity .15s ease;
+  }
+  /* Сам плюс — две полоски по центру. Текстовый символ «+» сидел ниже центра кружка:
+     у глифа свой отступ от базовой линии, и никакое align-items это не лечит. */
+  .cur-add::before, .cur-add::after {
+    content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    background:currentColor; border-radius:2px;
+  }
+  .cur-add::before { width:46%; height:2px; }
+  .cur-add::after { width:2px; height:46%; }
+  .cur-add:active { transform:translateY(2px); box-shadow:0 0 0 rgba(0,0,0,0.35); }
+  /* Во время кулдауна кнопка гаснет, но остаётся кликабельной: по клику окно
+     покажет, сколько ждать. Полностью disabled-кнопка просто молчала бы. */
+  .cur-add[data-wait="1"] { opacity:.45; }
   .btn.shop { background:linear-gradient(180deg,#b98bff,#7b3fe4); color:#fff; box-shadow:0 5px 0 #4f21a0, 0 10px 20px rgba(0,0,0,0.45); }
   .btn.shop:active { box-shadow:0 1px 0 #4f21a0, 0 4px 10px rgba(0,0,0,0.45); }
 
@@ -330,6 +353,12 @@
   }
   .modal-close:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,0.35); }
   .modal-close .ic { width:15px; height:15px; }
+
+  /* ===== Награда за рекламу ===== */
+  #adRewardModal .box img { height:56px; }
+  #adRewardText { font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4; }
+  #adRewardModal[data-state="ok"] .modal-head .t { color:#ffd94a; }
+  #adRewardModal[data-state="err"] .modal-head .t { color:#ff7b7b; }
 
   /* Строка настройки и карточка задания — одна и та же «плитка»: тот же фон/рамка и
      та же нижняя «ступенька», что у кнопок меню. */
@@ -535,7 +564,7 @@
 
 <!-- Menu -->
 <div id="menu" class="overlay hidden">
-  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span></div>
+  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" aria-label="Получить чекушки за рекламу"></button></div>
   <div id="menuTools">
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
@@ -671,6 +700,18 @@
     <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Скоро</span></div></div>
     <div style="font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4;">Мини-игра на удвоение награды ещё в разработке. Загляни сюда позже!</div>
     <button class="btn small" id="soonOkBtn">Ок</button>
+  </div>
+</div>
+
+<!-- Награда за просмотр рекламы (плюсик у бейджа чекушек). Тексты, состояние
+     (ask / wait / ok / err) и сам показ рекламы — в source/adreward.js. -->
+<div id="adRewardModal" class="menu-modal hidden" data-state="ask">
+  <div class="box" style="align-items:center; text-align:center;">
+    <button class="modal-close" id="adRewardClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" id="adRewardTitle">Бонус</span></div></div>
+    <img id="adRewardIcon" alt="">
+    <div id="adRewardText"></div>
+    <button class="btn small" id="adRewardBtn">Смотреть</button>
   </div>
 </div>
 

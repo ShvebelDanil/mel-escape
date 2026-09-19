@@ -21,7 +21,8 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets',
-  'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'soonModal', 'questToasts'];
+  'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'soonModal', 'questToasts',
+  'curAddBtn', 'adRewardModal', 'adRewardTitle', 'adRewardText', 'adRewardBtn'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
