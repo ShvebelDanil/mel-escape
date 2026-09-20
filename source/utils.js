@@ -98,7 +98,7 @@ function syncVolRow(id, v) {
   el.style.setProperty('--p', v + '%');  // заливка трека до бегунка, см. .vol-slider в index.html
   const row = el.closest('.vol-row'); if (!row) return;
   row.querySelector('.vol-val').textContent = v + '%';
-  // Иконка слева — индикатор, а не кнопка: на нуле перечёркивается (см. .vol-ico.off в index.html).
+  // Иконка слева — индикатор и кнопка mute: на нуле перечёркивается (см. .vol-ico.off в index.html).
   row.querySelector('.vol-ico').classList.toggle('off', v === 0);
 }
 

@@ -526,10 +526,22 @@ function bindInput() {
   // Ползунки громкости. На 'input' (каждое движение) только применяем громкость — слышно сразу;
   // сейв и клик вешаем на 'change' (отпустили бегунок), иначе каждое движение писало бы
   // в localStorage и дёргало облачный сейв.
+  // Клик по иконке слева от ползунка — мгновенный mute/unmute раздела. Прошлый уровень
+  // помним в замыкании и возвращаем при включении обратно: сбрасывать в 100 % было бы грубо,
+  // этот уровень пользователь выставлял сам. 100 берём только если помнить нечего.
   const volSlider = (id, key) => {
     const el = U.$(id); if (!el) return;
     el.addEventListener('input', () => { U.save[key] = U.clamp(el.value | 0, 0, 100); U.syncAudioUI(); U.Sound.ensure(); U.Sound.applyVolume(); });
     el.addEventListener('change', () => { U.persistSave(); U.Sound.click(); });
+    const row = el.closest('.vol-row'), ico = row && row.querySelector('.vol-ico');
+    if (!ico) return;
+    let prev = 0;
+    ico.addEventListener('click', () => {
+      const v = U.save[key] | 0;
+      if (v > 0) prev = v;
+      U.save[key] = v > 0 ? 0 : (prev || 100);
+      U.syncAudioUI(); U.Sound.ensure(); U.Sound.applyVolume(); U.persistSave(); U.Sound.click();
+    });
   };
   volSlider('musicVol', 'musicVol'); volSlider('soundVol', 'soundVol');
 }
