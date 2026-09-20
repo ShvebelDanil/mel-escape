@@ -21,8 +21,12 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinAdBtn', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets',
-  'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'soonModal', 'questToasts',
-  'curAddBtn', 'adRewardModal', 'adRewardTitle', 'adRewardText', 'adRewardBtn'];
+  'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'questToasts',
+  'curAddBtn', 'adRewardModal', 'adRewardTitle', 'adRewardText', 'adRewardBtn',
+  'rouletteModal', 'rouletteCurrency', 'rouletteCurIcon', 'rouletteAllIn', 'rouletteBetVal', 'rouletteBetIcon',
+  'rouletteBetInc', 'rouletteBetDec', 'rouletteChanceSlider', 'rouletteSpinBtn', 'rouletteHint',
+  'rouletteWheelDisc', 'rouletteWheelWater', 'rouletteWheelChance', 'rouletteWheelArrow',
+  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -49,7 +53,7 @@ export const DESK_TOP_Y = 1.045;
 
 // totalDist/runs/miniGames/questsDone обслуживают систему заданий (source/quests.js):
 // накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
-// мини-игр (пока всегда 0 — мини-игры нет) и id уже выданных заданий.
+// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
 export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [], adProgress: {} };

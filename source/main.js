@@ -10,6 +10,7 @@ import * as AUD from './audio.js';
 import * as TEX from './textures.js';
 import * as ADR from './adreward.js';
 import * as PWR from './powerups.js';
+import * as RLT from './roulette.js';
 
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
@@ -494,7 +495,7 @@ function bindInput() {
   on('petsBtn', act(openPetsShop));
   on('settingsBtn', act(() => QST.openSettings()));
   on('questsBtn', act(() => QST.openQuests()));
-  on('minigameBtn', act(() => QST.openSoon()));
+  on('minigameBtn', act(() => RLT.open()));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
@@ -524,11 +525,12 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
   PWR.initPowerups();
   ADR.initAdReward();
+  RLT.initRoulette();
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();

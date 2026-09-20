@@ -18,7 +18,7 @@ export const QUESTS = [
   { id: 'runs10',     icon: 'ic-play',   name: 'Сделай 10 забегов',         goal: 10,    reward: 150, progress: () => U.save.runs },
   { id: 'skin1',      icon: 'ic-shirt',  name: 'Купи скин',                 goal: 1,     reward: 100, progress: () => U.save.ownedSkins.length },
   { id: 'pet1',       icon: 'ic-paw',    name: 'Заведи питомца',            goal: 1,     reward: 100, progress: () => U.save.ownedPets.length },
-  { id: 'mini3',      icon: 'ic-money',  name: 'Сыграй в мини-игру 3 раза', goal: 3,     reward: 200, progress: () => U.save.miniGames }
+  { id: 'mini3',      icon: 'ic-money',  name: 'Сыграй в рулетку 3 раза',   goal: 3,     reward: 200, progress: () => U.save.miniGames }
 ];
 
 // Вставка иконки из общего SVG-спрайта index.html (одноцветная, красится через currentColor).
@@ -158,13 +158,12 @@ function renderSecret() {
 
 // ===== Модалки =====
 const isOpen = el => !!el && !el.classList.contains('hidden');
-export const modalOpen = () => isOpen(U.UI.settingsModal) || isOpen(U.UI.questsModal) || isOpen(U.UI.soonModal) || isOpen(U.UI.adRewardModal);
-// adRewardModal тоже гасим здесь (Escape, уход в магазин/забег), но его собственные
-// кнопки живут в source/adreward.js — сюда он попадает только как элемент.
-export function closeAll() { U.show(U.UI.settingsModal, false); U.show(U.UI.questsModal, false); U.show(U.UI.soonModal, false); U.show(U.UI.adRewardModal, false); }
+export const modalOpen = () => isOpen(U.UI.settingsModal) || isOpen(U.UI.questsModal) || isOpen(U.UI.rouletteModal) || isOpen(U.UI.adRewardModal);
+// adRewardModal и rouletteModal тоже гасим здесь (Escape, уход в магазин/забег), но их
+// собственные кнопки живут в source/adreward.js и source/roulette.js — сюда они попадают только как элементы.
+export function closeAll() { U.show(U.UI.settingsModal, false); U.show(U.UI.questsModal, false); U.show(U.UI.rouletteModal, false); U.show(U.UI.adRewardModal, false); }
 export function openSettings() { closeAll(); U.show(U.UI.settingsModal, true); }
 export function openQuests() { closeAll(); render(); U.show(U.UI.questsModal, true); }
-export function openSoon() { closeAll(); U.show(U.UI.soonModal, true); }
 
 // Свои биндинги (как в shop.js): main.js остаётся точкой входа, но не тащит на себе
 // внутренние кнопки окон заданий/настроек.
@@ -172,11 +171,11 @@ export function initQuests() {
   // Старый сейв мог закрыть все задания ещё до появления приза — выдаём скин молча.
   grantSecret();
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
-  for (const id of ['settingsClose', 'questsClose', 'soonClose', 'soonOkBtn']) {
+  for (const id of ['settingsClose', 'questsClose']) {
     const el = U.$(id); if (el) el.addEventListener('click', act(closeAll));
   }
   // Клик по затемнённому фону (не по самой панели) тоже закрывает окно.
-  for (const el of [U.UI.settingsModal, U.UI.questsModal, U.UI.soonModal]) {
+  for (const el of [U.UI.settingsModal, U.UI.questsModal]) {
     if (el) el.addEventListener('click', e => { if (e.target === el) { U.Sound.click(); closeAll(); } });
   }
 }

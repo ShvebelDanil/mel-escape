@@ -201,6 +201,7 @@ export function refreshCurrency() {
   const v = U.save.currency;
   if (U.UI.menuCurrency) U.UI.menuCurrency.textContent = v;
   if (U.UI.shopCurrency) U.UI.shopCurrency.textContent = v;
+  if (U.UI.rouletteCurrency) U.UI.rouletteCurrency.textContent = v;
 }
 
 function refresh() {

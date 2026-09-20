@@ -534,6 +534,130 @@
   .qt-name { font-size:11px; color:#b8ccbe; margin-top:2px; }
   .qt-reward { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; white-space:nowrap; }
   .qt-reward img { height:1.1em; }
+
+  /* ===== Рулетка чекушек (мини-игра, кнопка 💵 в меню) =====
+     Окно шире обычной .menu-modal: три колонки (ставка/шанс — колесо — награда) в ряд на
+     широком экране, стопкой на узком. Сама панель — тот же .box, что у остальных модалок
+     меню, чтобы не заводить отдельную оболочку. */
+  #rouletteModal .box { width:min(820px, 100%); }
+  .rlt-body { display:flex; flex-direction:column; gap:14px; overflow-y:auto; min-height:0; }
+  .rlt-col { display:flex; flex-direction:column; gap:10px; min-width:0; }
+  .rlt-wheelcol { align-items:center; justify-content:center; }
+  /* На широком экране — CSS Grid, а не flex-ряд: так граница окна награды (result) точно
+     совпадает с верхом панели «Ставка» и низом кнопки «Крутить» (запрос пользователя —
+     раньше окно тянулось на всю высоту колонки через align-items:stretch, включая топбар
+     и хинт, и не совпадало с нужными линиями). wheel растягивается на все 3 ряда и
+     центрируется внутри сам (у него уже есть align-items/justify-content:center). */
+  @media (min-width:680px) {
+    .rlt-body {
+      display:grid; grid-template-columns:1fr 236px 1.15fr; grid-template-rows:auto 1fr auto;
+      grid-template-areas:"topbar wheel ." "mid wheel result" "hint wheel .";
+      column-gap:20px; row-gap:14px;
+    }
+    .rlt-topbar { grid-area:topbar; }
+    .rlt-mid { grid-area:mid; }
+    .rlt-hint { grid-area:hint; }
+    .rlt-wheelcol { grid-area:wheel; }
+    .rlt-result { grid-area:result; }
+  }
+  /* Верхняя строка: бейдж валюты (компактнее обычного, но растёт по содержимому — не
+     фиксированная ширина). Кнопка ALL переехала вниз, к степперам ставки (см. .rlt-bet-steps). */
+  .rlt-topbar { display:flex; align-items:center; gap:8px; }
+  .rlt-topbar .cur-badge { align-self:flex-start; padding:5px 11px; font-size:clamp(14px,3.8vw,18px); gap:6px; }
+  .rlt-topbar .cur-badge img { margin-left:-3px; }
+  .rlt-panel { padding:11px 14px 13px; display:flex; flex-direction:column; gap:8px; }
+  .rlt-label { font-size:clamp(11px,3vw,13px); font-weight:800; color:#b8ccbe; text-transform:uppercase; letter-spacing:.5px; }
+
+  /* Ставка: иконка + число + столбик кнопок справа — ALL сверху, степперы ▲▼ под ней. */
+  .rlt-bet { display:flex; align-items:center; gap:4px; }
+  .rlt-bet img { height:2.5em; flex:none; }
+  .rlt-bet-val {
+    flex:1 1 auto; min-width:0; font-size:clamp(20px,5.2vw,26px); font-weight:900; color:#fff;
+    font-variant-numeric:tabular-nums; font-family:inherit;
+    background:transparent; border:none; outline:none; padding:0;
+  }
+  .rlt-bet-val:focus { text-decoration:underline; text-decoration-color:rgba(255,217,74,0.7); }
+  .rlt-bet-val:disabled { opacity:.6; }
+  .rlt-bet-steps { display:flex; flex-direction:column; gap:4px; }
+  .rlt-bet-steps button {
+    appearance:none; cursor:pointer; font-family:inherit; width:38px; height:24px; padding:0; line-height:1;
+    border-radius:7px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.22);
+    color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center; white-space:nowrap;
+  }
+  .rlt-bet-steps button:active { transform:translateY(1px); }
+  .rlt-bet-steps button:disabled { opacity:.35; }
+  .rlt-bet-steps button.rlt-allin {
+    font-weight:900; font-size:13px; letter-spacing:.2px;
+    background:rgba(255,217,74,0.16); border-color:rgba(255,217,74,0.4); color:#ffd94a;
+  }
+
+  /* Шанс: ползунок (переиспользует тему .vol-slider) + 4 кнопки-пресета. */
+  .rlt-slider { width:100%; }
+  .rlt-chance-presets { display:flex; gap:6px; }
+  .rlt-chance-presets button {
+    flex:1 1 0; appearance:none; cursor:pointer; font-family:inherit; font-weight:800;
+    padding:8px 4px; border-radius:10px; font-size:clamp(11px,3vw,13px);
+    background:rgba(255,255,255,0.1); color:#cfe0d8; border:1px solid rgba(255,255,255,0.18);
+  }
+  .rlt-chance-presets button[data-active="1"] { background:linear-gradient(180deg,#ffe066,#ffb400); color:#3a2a00; border-color:transparent; }
+  .rlt-chance-presets button:disabled { opacity:.5; }
+
+  .rlt-spin { width:100%; }
+  .rlt-spin:disabled { opacity:.5; cursor:default; transform:none; box-shadow:0 5px 0 #b57e00, 0 10px 20px rgba(0,0,0,0.45); }
+  .rlt-hint { font-size:12px; color:#b8ccbe; text-align:center; min-height:1.4em; }
+  .rlt-hint[data-warn="1"] { color:#ff8a8a; font-weight:800; }
+
+  /* Колесо: сам диск («бак с водой») статичен — заливка честно отражает шанс и не крутится
+     вместе с диском, это было бы физически нелепо. Крутится указатель-стрелка: он лежит в
+     отдельном слое того же размера, что и диск, поэтому rotate() вращает его точно вокруг
+     центра колеса (курсор облетает круг), а не крутится на месте.
+     Заливка «воды» — обычный div с высотой в % внутри круглой маски (overflow:hidden) —
+     дешевле и проще, чем canvas/SVG, и не требует перерисовки при вращении. */
+  .rlt-wheel { position:relative; width:clamp(176px,44vw,220px); height:clamp(176px,44vw,220px); }
+  .rlt-wheel-disc {
+    position:absolute; inset:0; border-radius:50%; overflow:hidden; background:#1b2a33;
+    border:4px solid rgba(255,255,255,0.28); box-shadow:0 8px 20px rgba(0,0,0,0.45), inset 0 0 22px rgba(0,0,0,0.4);
+  }
+  .rlt-wheel-water { position:absolute; left:0; right:0; bottom:0; height:50%; background:linear-gradient(180deg,#8ee38f,#2fae4e); }
+  .rlt-wheel-chance {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:2;
+    display:flex; align-items:center; justify-content:center;
+    width:clamp(44px,12vw,56px); height:clamp(44px,12vw,56px); border-radius:50%;
+    background:#152229; border:2px solid rgba(255,255,255,0.35);
+    font-size:clamp(13px,3.8vw,17px); font-weight:900; color:#fff;
+    text-shadow:0 2px 4px rgba(0,0,0,0.6); pointer-events:none; white-space:nowrap;
+  }
+  .rlt-wheel-arrow { position:absolute; inset:0; z-index:3; }
+  /* Стрелка утоплена в обод диска (перекрывает край), а не висит целиком снаружи —
+     плюс тень для ощущения глубины/вдавленности. */
+  .rlt-wheel-pointer {
+    position:absolute; left:50%; top:-4px; transform:translateX(-50%);
+    width:0; height:0; border-left:11px solid transparent; border-right:11px solid transparent; border-top:17px solid #ffd94a;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,0.5));
+  }
+
+  /* Окно награды справа: по умолчанию приглушённый превью, .on переигрывает анимацию
+     через replayCss (utils.js) — тот же приём, что у #comboText/.buff в HUD. */
+  .rlt-result {
+    align-items:center; text-align:center; justify-content:center;
+    background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.16); border-radius:16px;
+    padding:22px 14px; gap:10px;
+  }
+  .rlt-result-title { font-size:clamp(13px,3.6vw,16px); font-weight:900; text-transform:uppercase; letter-spacing:.5px; color:#b8ccbe; }
+  /* Иконка сверху, сумма снизу — по просьбе пользователя (не в ряд, как было раньше). */
+  .rlt-result-body { display:flex; flex-direction:column; align-items:center; gap:0; font-size:clamp(26px,7vw,36px); font-weight:900; color:#ffd94a; opacity:.55; }
+  .rlt-result-body img { height:2.2em; margin-bottom:-10px; }
+  .rlt-result-text { font-size:clamp(14px,3.8vw,17px); color:#b8ccbe; line-height:1.4; }
+  .rlt-result[data-state="win"] { background:rgba(47,174,78,0.18); border-color:rgba(126,224,129,0.5); }
+  .rlt-result[data-state="win"] .rlt-result-title { color:#8ce39a; }
+  .rlt-result[data-state="win"] .rlt-result-body { opacity:1; color:#8ce39a; }
+  .rlt-result[data-state="lose"] { background:rgba(255,82,82,0.10); border-color:rgba(255,130,130,0.35); }
+  .rlt-result[data-state="lose"] .rlt-result-title { color:#ff8a8a; }
+  .rlt-result[data-state="lose"] .rlt-result-body { display:none; }
+  .rlt-result-body.on { animation:rltWinPop .5s cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes rltWinPop { 0%{transform:scale(.5);} 60%{transform:scale(1.18);} 100%{transform:scale(1);} }
+  .rlt-result-text.on { animation:rltShake .4s ease; }
+  @keyframes rltShake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
 </style>
 </head>
 <body>
@@ -744,13 +868,54 @@
   </div>
 </div>
 
-<!-- Заглушка будущей мини-игры (кнопка 💵) -->
-<div id="soonModal" class="menu-modal hidden">
-  <div class="box" style="align-items:center; text-align:center;">
-    <button class="modal-close" id="soonClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Скоро</span></div></div>
-    <div style="font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4;">Мини-игра на удвоение награды ещё в разработке. Загляни сюда позже!</div>
-    <button class="btn small" id="soonOkBtn">Ок</button>
+<!-- Рулетка чекушек (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
+<div id="rouletteModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="rouletteClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Бурмалда</span></div></div>
+    <div class="rlt-body">
+      <div class="rlt-topbar">
+        <div class="cur-badge"><img id="rouletteCurIcon" alt=""><span id="rouletteCurrency">0</span></div>
+      </div>
+      <div class="rlt-col rlt-mid">
+        <div class="rlt-panel ui-tile">
+          <div class="rlt-label">Ставка</div>
+          <div class="rlt-bet">
+            <img id="rouletteBetIcon" alt="">
+            <input class="rlt-bet-val" id="rouletteBetVal" type="text" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Размер ставки">
+            <div class="rlt-bet-steps">
+              <button class="rlt-allin" id="rouletteAllIn">ALL</button>
+              <button id="rouletteBetInc" aria-label="Увеличить ставку">▲</button>
+              <button id="rouletteBetDec" aria-label="Уменьшить ставку">▼</button>
+            </div>
+          </div>
+        </div>
+        <div class="rlt-panel ui-tile">
+          <div class="rlt-label">Шанс выигрыша</div>
+          <input class="vol-slider rlt-slider" id="rouletteChanceSlider" type="range" min="5" max="75" step="1" value="50" aria-label="Шанс выигрыша">
+          <div class="rlt-chance-presets">
+            <button id="rouletteChance10" data-active="0">10%</button>
+            <button id="rouletteChance30" data-active="0">30%</button>
+            <button id="rouletteChance50" data-active="1">50%</button>
+            <button id="rouletteChance75" data-active="0">75%</button>
+          </div>
+        </div>
+        <button class="btn rlt-spin" id="rouletteSpinBtn">Крутить</button>
+      </div>
+      <div class="rlt-hint" id="rouletteHint" data-warn="0"></div>
+      <div class="rlt-col rlt-wheelcol">
+        <div class="rlt-wheel">
+          <div class="rlt-wheel-disc" id="rouletteWheelDisc"><div class="rlt-wheel-water" id="rouletteWheelWater"></div></div>
+          <div class="rlt-wheel-chance" id="rouletteWheelChance">50%</div>
+          <div class="rlt-wheel-arrow" id="rouletteWheelArrow"><div class="rlt-wheel-pointer"></div></div>
+        </div>
+      </div>
+      <div class="rlt-col rlt-result" id="rouletteResult" data-state="idle">
+        <div class="rlt-result-title" id="rouletteResultTitle">Возможный выигрыш</div>
+        <div class="rlt-result-body" id="rouletteResultBody"><img id="rouletteResultIcon" alt=""><span id="rouletteResultAmount">190</span></div>
+        <div class="rlt-result-text hidden" id="rouletteResultText"></div>
+      </div>
+    </div>
   </div>
 </div>
 
