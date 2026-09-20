@@ -310,6 +310,7 @@ export function releaseObstacle(i) {
   o.group = null; activeObstacles.splice(i, 1); obDescPool.push(o);
 }
 export function clearObstacles(fromZ, toZ) { for (let i = activeObstacles.length - 1; i >= 0; i--) { const o = activeObstacles[i]; if (o.z > fromZ && o.z < toZ) releaseObstacle(i); } }
+export function clearCoins(fromZ, toZ) { for (let i = activeCoins.length - 1; i >= 0; i--) { const c = activeCoins[i]; if (c.z > fromZ && c.z < toZ) releaseCoin(i); } }
 
 // Бутылки: раньше каждая была THREE.Sprite, то есть отдельный draw call (в забеге до 20 за кадр).
 // Теперь все они — один меш из квадов, развёрнутых по базису камеры ровно так же, как это делает

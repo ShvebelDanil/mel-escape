@@ -59,8 +59,12 @@
     box-shadow:0 4px 0 rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.25);
   }
   .btn.ghost:active { box-shadow:0 1px 0 rgba(0,0,0,0.35); }
-  .btn.ad { background:linear-gradient(180deg,#7ee081,#2fae4e); color:#06340f; box-shadow:0 5px 0 #1d7a36, 0 10px 20px rgba(0,0,0,0.45); }
-  .btn.ad:active { box-shadow:0 1px 0 #1d7a36; }
+
+  #skipIntroBtn {
+    position:fixed; left:50%; bottom:calc(28px + env(safe-area-inset-bottom));
+    transform:translateX(-50%); z-index:9; font-size:18px; padding:14px 28px;
+  }
+  #skipIntroBtn:active { transform:translateX(-50%) translateY(4px); }
 
   .stack-panel { display:flex; flex-direction:column; align-items:stretch; gap:12px; width:min(300px, 82vw); }
 
@@ -174,8 +178,9 @@
     font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:pulseNR 1s infinite alternate; }
   @keyframes pulseNR { from{transform:scale(1);} to{transform:scale(1.07);} }
 
-  #reviveBtn { display:flex; flex-direction:column; gap:2px; line-height:1.15; }
-  #reviveBtn small { font-size:11px; font-weight:700; text-transform:none; letter-spacing:0; opacity:.85; }
+  #reviveBtn { display:flex; align-items:center; justify-content:center; gap:6px; font-size:clamp(14px,3.6vw,18px); white-space:nowrap; }
+  #reviveBtn img { height:1em; }
+  #reviveBtn.locked { opacity:.55; }
 
   /* ===== Валюта и магазин ===== */
   .cur-badge {
@@ -726,7 +731,7 @@
 <div id="yell"></div>
 
 <!-- Кнопка пропуска интро -->
-<button id="skipIntroBtn" class="btn ghost small hidden" style="position:fixed; bottom:calc(20px + env(safe-area-inset-bottom)); right:calc(20px + env(safe-area-inset-right)); z-index:9;">Пропустить ⏭</button>
+<button id="skipIntroBtn" class="btn hidden">Пропустить ⏭</button>
 
 <!-- Loading -->
 <div id="loading" class="overlay">
@@ -789,8 +794,8 @@
       <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
       <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Бутылок</div></div>
     </div>
-    <button class="btn" id="againBtn">▶ Ещё раз</button>
-    <button class="btn ad hidden" id="reviveBtn"><span>📺 Второй шанс</span><small id="reviveHint">посмотри рекламу и беги дальше</small></button>
+    <button class="btn hidden" id="reviveBtn">Восстать за <span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
+    <button class="btn ghost" id="againBtn">▶ Ещё раз</button>
     <button class="btn ghost" id="overMenuBtn">В меню</button>
   </div>
 </div>

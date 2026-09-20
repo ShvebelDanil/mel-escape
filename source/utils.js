@@ -15,7 +15,7 @@ export function weightedPick(items, weightOf) {
 }
 
 export const UI = {};
-export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn',
+export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'reviveCost', 'reviveCostIcon', 'skipIntroBtn',
   'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
   'newRecord', 'musicVol', 'soundVol', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',

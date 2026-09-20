@@ -134,6 +134,8 @@ function release(i) {
   GFX.scene.remove(p.node); nodePool[p.type.id].push(p.node);
   p.node = null; activePickups.splice(i, 1); descPool.push(p);
 }
+// Зовёт main.js:revive() — убирает паверапы в зоне, которую заново открывает воскрешение игрока.
+export function clearRange(fromZ, toZ) { for (let i = activePickups.length - 1; i >= 0; i--) { const p = activePickups[i]; if (p.z > fromZ && p.z < toZ) release(i); } }
 
 // Тик расписания. Зовёт level.js из fillSpawns и передаёт метраж ТОЧКИ ГЕНЕРАЦИИ (G.dist + ahead),
 // а не текущий метраж игрока: пикап встанет на 170 м впереди, и считать надо там, где он встанет.

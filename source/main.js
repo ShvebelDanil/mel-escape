@@ -15,7 +15,7 @@ import * as RLT from './roulette.js';
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
 // записываются в сейв ровно один раз, даже если caught() случился дважды (смерть → ревайв → смерть).
-export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, bankedDist: 0, runBanked: false, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
+export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, bankedDist: 0, runBanked: false, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveCount: 0, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spinDir: 0, spinT: 0, spinDur: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, id: '', x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0, voiceT: 0 };
@@ -32,6 +32,9 @@ const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
 const PET_VOICE_MIN = 8, PET_VOICE_MAX = 14; // разброс паузы между репликами питомца на бегу
 const FLIP_K = 0.78; // доля полёта, за которую проходит оборот: заметно короче — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
+const REVIVE_MAX = 3; // сколько раз за один забег можно воскреснуть за чекушки
+const REVIVE_COST_BASE = 100, REVIVE_COST_STEP = 100; // цена растёт на STEP за каждое воскрешение, сбрасывается в resetRun()
+const reviveCost = () => REVIVE_COST_BASE + G.reviveCount * REVIVE_COST_STEP;
 
 function move(dir) {
   if (G.state !== 'run') return;
@@ -230,7 +233,7 @@ function resetRun() {
   segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
   player.lane = 1; player.x = 0; player.y = 0; player.vy = 0; player.z = 0; player.groundY = 0; player.grounded = true; player.rolling = 0; player.invuln = 0; player.squash = 0;
   resetPose(); player.node.inner.scale.set(1, 1, 1); player.node.inner.position.y = -0.92;
-  G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveUsed = false; G.overShown = false; G.shake = 0;
+  G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveCount = 0; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
   G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); GFX.resetResolution();
   PWR.reset();   // баффы и пикапы живут только внутри забега
@@ -286,10 +289,22 @@ function resumeRun() { if (G.state !== 'paused') return; QST.closeAll(); G.state
 function showOverScreen() {
   G.overShown = true; const m = Math.floor(G.dist);
   if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles;
-  U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over'); U.show(U.UI.reviveBtn, !G.reviveUsed && !!U.Sdk.ysdk);
+  U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over');
+  const canRevive = G.reviveCount < REVIVE_MAX;
+  U.show(U.UI.reviveBtn, canRevive);
+  if (canRevive) {
+    if (U.UI.reviveCost) U.UI.reviveCost.textContent = reviveCost();
+    if (U.UI.reviveBtn) U.UI.reviveBtn.classList.toggle('locked', U.save.currency < reviveCost());
+  }
 }
+// Воскрешение за чекушки: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
+// сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, чекушки И
+// паверапы — иначе игрок может ожить внутри объекта, который сам не убивает, но выглядит багом),
+// чтобы не влететь в то, от чего он только что умер, и короткая неуязвимость на случай, если рядом ещё что-то есть.
 function revive() {
-  G.reviveUsed = true; U.screens('hud'); G.state = 'run'; ENT.clearObstacles(player.z - 6, player.z + Math.max(50, G.speed * 2.6));
+  G.reviveCount++; U.screens('hud'); G.state = 'run';
+  const z0 = player.z - 6, z1 = player.z + Math.max(50, G.speed * 2.6);
+  ENT.clearObstacles(z0, z1); ENT.clearCoins(z0, z1); PWR.clearRange(z0, z1);
   player.invuln = 2.8; player.rolling = 0; resetPose(); G.speed = Math.max(U.BASE_SPEED, G.speed * 0.7);
   granny.closeT = 0; granny.catchMode = false; granny.targetZOff = -9.2; G.shake = 0.3; U.Sdk.gameplayStart();
   pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0;
@@ -500,7 +515,13 @@ function bindInput() {
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
   on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu); }));
-  on('reviveBtn', act(() => { if (G.state !== 'over' || G.reviveUsed) return; U.show(U.UI.reviveBtn, false); U.showRewarded(revive, () => { if (G.state === 'over') U.show(U.UI.reviveBtn, true); }); }));
+  on('reviveBtn', act(() => {
+    if (G.state !== 'over' || G.reviveCount >= REVIVE_MAX) return;
+    const cost = reviveCost();
+    if (U.save.currency < cost) { U.Sound.denied(); return; }
+    U.save.currency -= cost; U.persistSave();
+    revive();
+  }));
   on('pauseSettingsBtn', act(() => { if (G.state === 'paused') QST.openSettings(); }));
   // Ползунки громкости. На 'input' (каждое движение) только применяем громкость — слышно сразу;
   // сейв и клик вешаем на 'change' (отпустили бегунок), иначе каждое движение писало бы
@@ -525,7 +546,7 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
   PWR.initPowerups();
