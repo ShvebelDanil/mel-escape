@@ -1,5 +1,6 @@
 import * as U from './utils.js';
 import * as TEX from './textures.js';
+import { t } from './i18n.js';
 
 export let renderer, scene, camera;
 export let texMel, texGranny, texBottle;
@@ -361,7 +362,7 @@ export function buildEnvTextures() {
   wallTex = canvasTex(128, 256, (g) => { g.fillStyle = '#f0ecd9'; g.fillRect(0, 0, 128, 256); g.fillStyle = '#a9c98c'; g.fillRect(0, 148, 128, 92); g.fillStyle = '#6f9459'; g.fillRect(0, 144, 128, 7); g.fillStyle = '#5c4633'; g.fillRect(0, 240, 128, 16); }, [6, 1], maxAniso);
   lockerTex = canvasTex(256, 512, (g) => { g.fillStyle = '#7e8b99'; g.fillRect(0, 0, 256, 512); for (let i = 0; i < 2; i++) { const x = 4 + i * 126; g.fillStyle = '#8895a3'; g.fillRect(x, 6, 118, 496); g.strokeStyle = '#5d6873'; g.lineWidth = 4; g.strokeRect(x, 6, 118, 496); g.fillStyle = '#55606a'; for (let v = 0; v < 3; v++) g.fillRect(x + 20, 30 + v * 16, 78, 7); g.fillStyle = '#f3c53d'; g.fillRect(x + 88, 250, 16, 34); } });
   shelfTex = canvasTex(256, 512, (g) => { g.fillStyle = '#6b4a2e'; g.fillRect(0, 0, 256, 512); const cols = ['#b23a3a', '#2f5d8a', '#3f7a48', '#c98a2b', '#6a3d8a', '#d9d2bd', '#8a3b2f', '#2e7f8a']; for (let s = 0; s < 4; s++) { const y0 = 14 + s * 122; g.fillStyle = '#3a2716'; g.fillRect(12, y0, 232, 104); let x = 16; while (x < 236) { const bw = U.randi(12, 26), bh = U.randi(62, 94); if (x + bw > 240) break; g.fillStyle = U.pick(cols); g.fillRect(x, y0 + 104 - bh, bw, bh); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, y0 + 104 - bh, 3, bh); x += bw + 2; if (Math.random() < 0.12) x += U.randi(10, 30); } g.fillStyle = '#8a5a33'; g.fillRect(8, y0 + 104, 240, 14); } });
-  signTex = canvasTex(128, 192, (g) => { g.fillStyle = '#f2c320'; g.fillRect(0, 0, 128, 192); g.strokeStyle = '#1a1a1a'; g.lineWidth = 4; g.strokeRect(4, 4, 120, 184); g.fillStyle = '#1a1a1a'; g.font = 'bold 19px Arial'; g.textAlign = 'center'; g.fillText('ОСТОРОЖНО', 64, 38); g.beginPath(); g.arc(64, 70, 10, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 82); g.lineTo(76, 108); g.lineTo(98, 100); g.moveTo(76, 108); g.lineTo(58, 130); g.moveTo(66, 92); g.lineTo(40, 88); g.stroke(); g.font = 'bold 21px Arial'; g.fillText('МОКРЫЙ', 64, 160); g.fillText('ПОЛ', 64, 182); });
+  signTex = canvasTex(128, 192, (g) => { g.fillStyle = '#f2c320'; g.fillRect(0, 0, 128, 192); g.strokeStyle = '#1a1a1a'; g.lineWidth = 4; g.strokeRect(4, 4, 120, 184); g.fillStyle = '#1a1a1a'; g.font = 'bold 19px Arial'; g.textAlign = 'center'; g.fillText(t('world.caution'), 64, 38); g.beginPath(); g.arc(64, 70, 10, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 82); g.lineTo(76, 108); g.lineTo(98, 100); g.moveTo(76, 108); g.lineTo(58, 130); g.moveTo(66, 92); g.lineTo(40, 88); g.stroke(); g.font = 'bold 21px Arial'; g.fillText(t('world.wet'), 64, 160); g.fillText(t('world.floor'), 64, 182); });
 }
 
 function buildDecorUnit(kind) {
@@ -442,7 +443,7 @@ export function buildSegment(i) {
 // Дневник: обложка + страницы + текстурная крышка. Боксом с массивом из 6 материалов он стоил
 // 6 draw call и висел прямо в руке игрока, то есть в кадре постоянно; склеенный — 2.
 export function buildDiaryMesh() {
-  if (!buildDiaryMesh.tex) buildDiaryMesh.tex = canvasTex(128, 128, (g) => { g.fillStyle = '#1d5c3f'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d9b64a'; g.lineWidth = 6; g.strokeRect(8, 8, 112, 112); g.fillStyle = '#d9b64a'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.fillText('ДНЕВНИК', 64, 58); g.font = 'bold 18px Arial'; g.fillText('МЭЛА', 64, 86); });
+  if (!buildDiaryMesh.tex) buildDiaryMesh.tex = canvasTex(128, 128, (g) => { g.fillStyle = '#1d5c3f'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d9b64a'; g.lineWidth = 6; g.strokeRect(8, 8, 112, 112); g.fillStyle = '#d9b64a'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.fillText(t('world.diary1'), 64, 58); g.font = 'bold 18px Arial'; g.fillText(t('world.diary2'), 64, 86); });
   // Раскладка граней повторяет прежний массив материалов: корпус зелёный, снизу светлые страницы,
   // текстурная наклейка — на переднем торце (+Z), как и было.
   const g = panel(0.3, 0.07, 0.4, '#14523a', buildDiaryMesh.tex, [1]);

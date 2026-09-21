@@ -1,10 +1,14 @@
 import * as U from './utils.js';
 import * as SHOP from './shop.js';
 import * as QST from './quests.js';
+import { t } from './i18n.js';
 
 // Награда за просмотр rewarded-рекламы: плюсик у бейджа пузыриков в меню.
 // Здесь же — единственное место настройки фичи.
-export const AD_REWARD = 100;              // пузыриков за один досмотренный ролик
+// AD_REWARD задаёт сразу две вещи: награду за ролик у плюсика в меню И «курс» покупки вещей
+// за рекламу (adsFor в конце файла = цена / награда). 250 выбрано от самого дорогого скина:
+// 5000 / 250 = 20 роликов, остальные цены пересчитываются в той же пропорции.
+export const AD_REWARD = 250;              // пузыриков за один досмотренный ролик
 export const AD_COOLDOWN_MS = 3 * 60 * 1000; // пауза между наградами, мс
 
 // lastRewardAt намеренно не пишется в сейв: кулдаун защищает от кликания подряд
@@ -40,8 +44,8 @@ function syncBtn() {
 
 export function open() {
   QST.closeAll();
-  if (leftMs() > 0) setState('wait', 'Подожди', 'Награда за рекламу уже получена. Следующая — через ' + mmss(leftMs()) + '.', 'Ок');
-  else setState('ask', 'Бонус', 'Посмотреть рекламу за ' + AD_REWARD + ' пузыриков?', 'Смотреть');
+  if (leftMs() > 0) setState('wait', t('ad.waitTitle'), t('ad.waitText', { time: mmss(leftMs()) }), t('modal.ok'));
+  else setState('ask', t('ad.title'), t('ad.askText', { n: AD_REWARD }), t('ad.watch'));
   U.show(U.UI.adRewardModal, true);
 }
 export function close() { if (!pending) U.show(U.UI.adRewardModal, false); }
@@ -52,7 +56,7 @@ function grant() {
   SHOP.refreshCurrency();  // бейджи меню и магазина
   lastRewardAt = Date.now();
   syncBtn();
-  setState('ok', 'Готово', '+' + AD_REWARD + ' пузыриков зачислено!', 'Отлично');
+  setState('ok', t('ad.okTitle'), t('ad.okText', { n: AD_REWARD }), t('ad.okBtn'));
 }
 
 function watch() {
@@ -62,10 +66,10 @@ function watch() {
   // выдаём награду сразу, иначе фичу нельзя было бы проверить.
   if (!y || !y.adv) { grant(); return; }
   pending = true;
-  setState('wait', 'Реклама', 'Загружаем ролик…', '');
+  setState('wait', t('ad.loadTitle'), t('ad.loadText'), '');
   U.showRewarded(
     () => { pending = false; grant(); },
-    () => { pending = false; setState('err', 'Не вышло', 'Награда не засчитана: ролик не был досмотрен до конца или реклама сейчас недоступна.', 'Понятно'); }
+    () => { pending = false; setState('err', t('ad.errTitle'), t('ad.errText'), t('ad.errBtn')); }
   );
 }
 

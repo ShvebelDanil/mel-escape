@@ -1,24 +1,30 @@
 import * as U from './utils.js';
 import * as TEX from './textures.js';
 import * as SK from './skins.js';
+import { t } from './i18n.js';
 
 // ===== Реестр заданий =====
 // Чтобы добавить/изменить задание — правится только этот массив:
 //   id       — ключ в save.questsDone, менять у существующего задания НЕЛЬЗЯ (иначе награда выдастся повторно);
 //   icon     — id символа в SVG-спрайте (<symbol> в начале <body> index.html);
-//   name     — заголовок карточки;
+//   nameKey  — ключ заголовка карточки в словаре source/i18n.js;
 //   goal     — цель;
 //   reward   — награда в пузыриках (save.currency — единственная валюта игры);
 //   progress — текущее значение; считается из уже существующих показателей сейва,
 //              плюс «живая» прибавка текущего забега (liveDist/liveBottles), чтобы
 //              задание закрывалось прямо на бегу, а не только после смерти.
+// id остаются прежними даже там, где цель изменилась (bottles300 → 2000, runs10 → 25,
+// mini3 → 5): id — ключ в save.questsDone, и его смена выдала бы награду повторно.
+// Актуальные числа живут в goal и в тексте (nameKey), а не в идентификаторе.
 export const QUESTS = [
-  { id: 'dist10k',    icon: 'ic-flag',   name: 'Пробеги 10000 метров',      goal: 10000, reward: 300, progress: () => U.save.totalDist + liveDist },
-  { id: 'bottles300', icon: 'ic-bottle', name: 'Собери 300 пузыриков',        goal: 300,   reward: 200, progress: () => U.save.bottles + liveBottles },
-  { id: 'runs10',     icon: 'ic-play',   name: 'Сделай 10 забегов',         goal: 10,    reward: 150, progress: () => U.save.runs },
-  { id: 'skin1',      icon: 'ic-shirt',  name: 'Купи скин',                 goal: 1,     reward: 100, progress: () => U.save.ownedSkins.length },
-  { id: 'pet1',       icon: 'ic-paw',    name: 'Заведи питомца',            goal: 1,     reward: 100, progress: () => U.save.ownedPets.length },
-  { id: 'mini3',      icon: 'ic-money',  name: 'Сыграй в рулетку 3 раза',   goal: 3,     reward: 200, progress: () => U.save.miniGames }
+  { id: 'dist10k',    icon: 'ic-flag',   nameKey: 'quest.dist10k',     goal: 10000, reward: 300, progress: () => U.save.totalDist + liveDist },
+  { id: 'bottles300', icon: 'ic-bottle', nameKey: 'quest.bottles2000', goal: 2000,  reward: 200, progress: () => U.save.bottles + liveBottles },
+  { id: 'runs10',     icon: 'ic-play',   nameKey: 'quest.runs25',      goal: 25,    reward: 150, progress: () => U.save.runs },
+  { id: 'skin1',      icon: 'ic-shirt',  nameKey: 'quest.skin1',       goal: 1,     reward: 100, progress: () => U.save.ownedSkins.length },
+  { id: 'pet1',       icon: 'ic-paw',    nameKey: 'quest.pet1',        goal: 1,     reward: 100, progress: () => U.save.ownedPets.length },
+  { id: 'mini3',      icon: 'ic-money',  nameKey: 'quest.mini5',       goal: 5,     reward: 200, progress: () => U.save.miniGames },
+  // Паверапы считаются все вместе: магнит, х2 и сапоги (source/powerups.js).
+  { id: 'power10',    icon: 'ic-bolt',   nameKey: 'quest.power10',     goal: 10,    reward: 200, progress: () => U.save.powerups }
 ];
 
 // Вставка иконки из общего SVG-спрайта index.html (одноцветная, красится через currentColor).
@@ -77,9 +83,9 @@ function toast(q) {
   const el = document.createElement('div');
   el.className = 'quest-toast';
   el.innerHTML = '<div class="qt-check">' + ico('ic-check') + '</div>' +
-    '<div class="qt-body"><div class="qt-title">Выполнено задание!</div><div class="qt-name"></div></div>' +
+    '<div class="qt-body"><div class="qt-title">' + t('quests.toastDone') + '</div><div class="qt-name"></div></div>' +
     '<div class="qt-reward"><img alt=""><span></span></div>';
-  el.querySelector('.qt-name').textContent = q.name;
+  el.querySelector('.qt-name').textContent = t(q.nameKey);
   el.querySelector('.qt-reward img').src = TEX.url('bottle');
   el.querySelector('.qt-reward span').textContent = '+' + q.reward;
   pushToast(box, el);
@@ -91,7 +97,7 @@ function secretToast() {
   const el = document.createElement('div');
   el.className = 'quest-toast';
   el.innerHTML = '<div class="qt-check">' + ico('ic-shirt') + '</div>' +
-    '<div class="qt-body"><div class="qt-title">Открыт секретный скин!</div><div class="qt-name">Забери его в магазине</div></div>';
+    '<div class="qt-body"><div class="qt-title">' + t('quests.toastSkin') + '</div><div class="qt-name">' + t('quests.toastSkinSub') + '</div></div>';
   pushToast(box, el);
 }
 
@@ -123,8 +129,8 @@ export function render() {
     card.innerHTML = '<div class="q-icon">' + ico(q.icon) + '</div>' +
       '<div class="q-main"><div class="q-name"></div><div class="q-row"><div class="q-bar"><i></i></div><div class="q-prog"></div>' +
       (done ? '<div class="q-check">' + ico('ic-check') + '</div>' : '') + '</div></div>' +
-      '<div class="q-reward"><div class="l">Награда</div><div class="v"><img alt=""><span></span></div></div>';
-    card.querySelector('.q-name').textContent = q.name;
+      '<div class="q-reward"><div class="l">' + t('quests.reward') + '</div><div class="v"><img alt=""><span></span></div></div>';
+    card.querySelector('.q-name').textContent = t(q.nameKey);
     card.querySelector('.q-prog').textContent = cur + ' / ' + q.goal;
     card.querySelector('.q-bar i').style.width = Math.round(cur / q.goal * 100) + '%';
     card.querySelector('.q-reward img').src = bottleUrl;
@@ -144,8 +150,8 @@ function renderSecret() {
   const open = SK.isOwned(s.id), cur = doneCount();
   el.dataset.done = open ? '1' : '0';
   el.querySelector('.sq-sub').textContent = open
-    ? 'Скин открыт — забери его в магазине'
-    : 'Выполни все задания и получи секретный скин';
+    ? t('quests.secretOpen')
+    : t('quests.secretLocked');
   el.querySelector('.q-bar i').style.width = Math.round(cur / QUESTS.length * 100) + '%';
   el.querySelector('.q-prog').textContent = cur + ' / ' + QUESTS.length;
   const img = el.querySelector('.sq-shot img');

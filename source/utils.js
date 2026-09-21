@@ -32,7 +32,12 @@ export function replayCss(el) { if (!el) return; el.classList.remove('on'); void
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
 export function show(el, on) { if (el) el.classList.toggle('hidden', !on); }
 export const SCREENS = ['menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn', 'shop'];
-export function screens(...ids) { for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0); }
+export function screens(...ids) {
+  for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0);
+  // Sticky-баннер висит только на «спокойных» экранах: меню, магазин, экран смерти.
+  // В забеге и в заставке он перекрывал бы дорогу, поэтому там его снимаем.
+  setSticky(ids.indexOf('menu') >= 0 || ids.indexOf('shop') >= 0 || ids.indexOf('over') >= 0);
+}
 
 export const LANES = [-2.3, 0, 2.3];
 // 8 сегментов по 24 м покрывают минимум 152 м впереди игрока — с запасом перекрывают
@@ -51,12 +56,13 @@ export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-// totalDist/runs/miniGames/questsDone обслуживают систему заданий (source/quests.js):
+// totalDist/runs/miniGames/powerups/questsDone обслуживают систему заданий (source/quests.js):
 // накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
-// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки) и id уже выданных заданий.
+// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки), число поднятых
+// за всё время паверапов (магнит/х2/сапоги, считается в source/main.js) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [], adProgress: {} };
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {} };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 // adProgress: сколько роликов уже просмотрено за конкретный скин/питомца («skin:punk» -> 2).
 // Обычный объект, а не Map: он как есть уходит в JSON и в облако Яндекса.
@@ -79,7 +85,7 @@ export function readLocalSave() {
       save.best = s.best | 0; save.bottles = s.bottles | 0; save.musicVol = readVol(s.musicVol, s.music); save.soundVol = readVol(s.soundVol, s.sound);
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
-      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
+      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.powerups = s.powerups | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
     }
   } catch (e) {}
 }
@@ -109,7 +115,7 @@ let cloudTimer = null, cloudPending = false;
 // десятками одинаковых ошибок. Поэтому сверяем payload сами и повтор просто не шлём.
 let lastCloudJson = '';
 export function cloudSave() {
-  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress };
+  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, powerups: save.powerups, questsDone: save.questsDone, adProgress: save.adProgress };
   const json = JSON.stringify(data);
   if (json === lastCloudJson) return;
   // Метку ставим ДО отправки и при ошибке не откатываем: если Яндекс ответил «данные не
@@ -157,7 +163,7 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone', 'adProgress'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'powerups', 'questsDone', 'adProgress'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         // Только если в облаке эти поля вообще есть: иначе пустая облачная запись
@@ -176,6 +182,7 @@ export const Sdk = {
         if (typeof d.totalDist === 'number') save.totalDist = Math.max(save.totalDist, d.totalDist | 0);
         if (typeof d.runs === 'number') save.runs = Math.max(save.runs, d.runs | 0);
         if (typeof d.miniGames === 'number') save.miniGames = Math.max(save.miniGames, d.miniGames | 0);
+        if (typeof d.powerups === 'number') save.powerups = Math.max(save.powerups, d.powerups | 0);
         for (const id of cleanStrList(d.questsDone)) if (save.questsDone.indexOf(id) < 0) save.questsDone.push(id);
         // Просмотренные за вещь ролики мёржим по каждому ключу отдельно: на другом
         // устройстве могли досмотреть больше, терять это нечестно.
@@ -206,10 +213,14 @@ const INTERSTITIAL_RETRY = 20000;
 let nextInterstitialAt = Date.now() + INTERSTITIAL_GAP;
 export function adWasShown() { nextInterstitialAt = Date.now() + INTERSTITIAL_GAP; }
 
-export function maybeInterstitial(then) {
+// force = true — показать невзирая на наш собственный кулдаун (смерть в забеге и прокрут
+// рулетки: по требованию реклама идёт после КАЖДОГО такого события). Сам Яндекс всё равно
+// не отдаст межстраничную чаще одного раза в 60 секунд — в этом случае придёт
+// onClose(wasShown=false), и мы просто идём дальше без задержки.
+export function maybeInterstitial(then, force) {
   const next = typeof then === 'function' ? then : () => {};
   const y = Sdk.ysdk;
-  if (!y || !y.adv || adBusy || Date.now() < nextInterstitialAt) { next(); return; }
+  if (!y || !y.adv || adBusy || (!force && Date.now() < nextInterstitialAt)) { next(); return; }
   adBusy = true; let done = false, opened = false;
   // shown приходит из onClose(wasShown). Раньше кулдаун ставился ДО показа, поэтому
   // несостоявшийся ролик съедал полторы минуты честного показа.
@@ -228,6 +239,25 @@ export function maybeInterstitial(then) {
     }});
   } catch (e) { clearTimeout(guard); finish(false); }
 }
+// ===== Sticky-баннер =====
+// Баннер рисует сама платформа поверх игрового окна: своего DOM-элемента у него нет,
+// доступны только «показать» и «скрыть». Состояние держим у себя, чтобы не дёргать SDK
+// повторно одним и тем же — showBannerAdv на уже показанном баннере просто тратит вызов.
+let stickyOn = false;
+export function setSticky(on) {
+  on = !!on;
+  const y = Sdk.ysdk;
+  if (!y || !y.adv || !y.adv.showBannerAdv) return;
+  if (on === stickyOn) return;
+  stickyOn = on;
+  // Обе функции возвращают промис (у скрытия — с reason при отказе); свой catch обязателен,
+  // иначе отказ площадки прилетит как unhandled rejection в консоль игрока.
+  try {
+    const p = on ? y.adv.showBannerAdv() : y.adv.hideBannerAdv();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+
 export function showRewarded(onReward, onFail) {
   const y = Sdk.ysdk;
   if (!y || !y.adv || adBusy) return onFail();

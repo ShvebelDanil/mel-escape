@@ -1,0 +1,565 @@
+// Локализация игры для Яндекс Игр: автоопределение языка + словарь всех видимых строк.
+//
+// Как работает определение:
+//   1) Синхронно, ещё до загрузки SDK — из navigator.language. Это нужно, чтобы процедурные
+//      текстуры (таблички «ВЫХОД», «МОКРЫЙ ПОЛ», обложка дневника) собирались сразу на нужном
+//      языке: они строятся в GFX.loadTextures(), который стартует параллельно с YaGames.init().
+//   2) После инициализации SDK — из ysdk.environment.i18n.lang (документированное поле Яндекса).
+//      Обычно совпадает с языком браузера; если нет — статический текст DOM перерисовывается.
+//
+// Ручного переключателя нет: язык целиком определяется площадкой, как требует Яндекс.
+// Неизвестный язык уводим в английский — он понятнее русского для случайной локали.
+
+export const LANGS = ['ru', 'en', 'tr'];
+const FALLBACK = 'en';
+
+export let lang = 'ru';
+
+// 'ru-RU' / 'RU' / 'ru' → 'ru'. Всё, чего нет в словаре, схлопывается в FALLBACK.
+function normalize(code) {
+  const l = String(code || '').toLowerCase().slice(0, 2);
+  return LANGS.indexOf(l) >= 0 ? l : FALLBACK;
+}
+
+// Подстановка вида {name}. Второй аргумент необязателен — большинство строк без параметров,
+// и тогда мы не трогаем строку вообще.
+export function t(key, params) {
+  const table = DICT[lang] || DICT.ru;
+  let s = table[key];
+  if (s === undefined) s = DICT.ru[key];
+  if (s === undefined) return key;              // забытый ключ виден сразу, а не превращается в пустоту
+  if (!params) return s;
+  return s.replace(/\{(\w+)\}/g, (m, p) => (params[p] !== undefined ? params[p] : m));
+}
+
+// Ранний язык из браузера. Вызывается один раз на старте main.js, до сборки текстур.
+export function detectFromBrowser() {
+  lang = normalize(navigator.language || navigator.userLanguage);
+  return lang;
+}
+
+// Уточнение по SDK. Возвращает true, если язык изменился и DOM надо перерисовать.
+export function detectFromSdk(ysdk) {
+  try {
+    const l = ysdk && ysdk.environment && ysdk.environment.i18n && ysdk.environment.i18n.lang;
+    if (!l) return false;
+    const next = normalize(l);
+    if (next === lang) return false;
+    lang = next;
+    return true;
+  } catch (e) { return false; }
+}
+
+// Статические тексты разметки. Элементы помечены в index.html:
+//   data-i18n="ключ"      → textContent
+//   data-i18n-aria="ключ" → aria-label (кнопки-иконки без подписи)
+// Вызывается при старте и повторно, если SDK сообщил другой язык, поэтому querySelectorAll
+// здесь допустим: это не игровой цикл, а разовая перерисовка интерфейса.
+export function applyStaticTexts() {
+  document.documentElement.lang = lang;
+  document.title = t('game.title');
+  const texts = document.querySelectorAll('[data-i18n]');
+  for (let i = 0; i < texts.length; i++) texts[i].textContent = t(texts[i].dataset.i18n);
+  const arias = document.querySelectorAll('[data-i18n-aria]');
+  for (let i = 0; i < arias.length; i++) arias[i].setAttribute('aria-label', t(arias[i].dataset.i18nAria));
+}
+
+// ===== Словарь =====
+// Русский — источник правды: любой новый ключ сначала появляется здесь, потом в en/tr.
+// Ключи сгруппированы по экранам; порядок внутри групп совпадает с порядком в index.html.
+const DICT = {
+  ru: {
+    'game.title': 'Мэл: Побег из школы',
+    'logo.name': 'Мэл',
+    'logo.sub': 'Побег из школы',
+    'loading.text': 'Загрузка…',
+    'loading.noThree': 'Ошибка: не загружен three.js',
+    'loading.error': 'Ошибка загрузки :(',
+
+    'hud.pause': 'Пауза',
+    'hud.meters': 'м',
+    'hud.skip': 'Пропустить ⏭',
+
+    'menu.curAdd': 'Получить пузырики за рекламу',
+    'menu.settings': 'Настройки',
+    'menu.quests': 'Задания',
+    'menu.minigame': 'Мини-игра',
+    'menu.best': 'Рекорд, м',
+    'menu.collected': 'Всего собрано',
+    'menu.play': 'Играть',
+    'menu.shop': 'Магазин',
+
+    'hint.lanes': 'полосы',
+    'hint.jump': 'прыжок',
+    'hint.roll': 'подкат',
+    'hint.swipeKey': 'свайпы',
+    'hint.swipe': 'на телефоне',
+
+    'pause.title': 'Пауза',
+    'pause.resume': '▶ Продолжить',
+    'pause.settings': 'Настройки',
+    'pause.restart': 'Заново',
+    'pause.menu': 'В меню',
+
+    'over.title': 'Попался!',
+    'over.newRecord': '🏆 Новый рекорд!',
+    'over.meters': 'Метров',
+    'over.bottles': 'Пузыриков',
+    'over.reviveFor': 'Восстать за',
+    'over.again': '▶ Ещё раз',
+    'over.menu': 'В меню',
+
+    'modal.close': 'Закрыть',
+    'modal.ok': 'Ок',
+
+    'shop.back': '← Назад',
+    'shop.tabSkins': 'Скины',
+    'shop.tabPets': 'Питомцы',
+    'shop.prev': 'Предыдущий вариант',
+    'shop.next': 'Следующий вариант',
+    'shop.buy': 'КУПИТЬ',
+    'shop.select': 'ВЫБРАТЬ',
+    'shop.selected': '✓ ВЫБРАНО',
+    'shop.locked': 'ЗАКРЫТО',
+    'shop.free': 'БЕСПЛАТНО',
+    'shop.owned': 'КУПЛЕНО',
+    'shop.byQuests': 'ОТКРЫТ ЗА ЗАДАНИЯ',
+    'shop.questsProgress': 'ЗАДАНИЯ {done} / {total}',
+    'shop.adBtn': 'ЗА РЕКЛАМУ {seen}/{need}',
+    'shop.adLoading': 'ЗАГРУЗКА…',
+    'shop.secretDesc': 'Секретный скин. Выполни все задания, чтобы открыть его.',
+    'shop.lockedTitle': 'СКИН ЗАКРЫТ!',
+    'shop.lockedText': 'Этот скин нельзя купить — он выдаётся за все задания. Выполнено {done} из {total}.',
+    'shop.noMoneyTitle': 'НЕДОСТАТОЧНО ПУЗЫРИКОВ!',
+    'shop.noMoneySkin': 'Для покупки скина нужно ещё {n} пузыриков.',
+    'shop.noMoneyPet': 'Для покупки питомца нужно ещё {n} пузыриков.',
+    'shop.boughtTitle': 'ПОКУПКА СОВЕРШЕНА!',
+    'shop.adUnlockedTitle': 'ОТКРЫТО ЗА РЕКЛАМУ!',
+    'shop.gotSkin': 'Теперь этот скин доступен в твоём гардеробе.',
+    'shop.gotPet': 'Питомец теперь доступен для выбора.',
+    'shop.adFailTitle': 'РЕКЛАМА НЕ ПОКАЗАНА',
+    'shop.adFailText': 'Ролик не был досмотрен до конца или реклама сейчас недоступна. Попробуй ещё раз.',
+    'shop.gotIt': 'ПОНЯТНО',
+    'shop.okBtn': 'ОК',
+
+    'settings.title': 'Настройки',
+    'settings.music': 'Музыка',
+    'settings.sound': 'Звуки',
+    'settings.musicAria': 'Громкость музыки',
+    'settings.soundAria': 'Громкость звуков',
+
+    'quests.title': 'Задания',
+    'quests.reward': 'Награда',
+    'quests.secretName': 'Секретный скин',
+    'quests.secretOpen': 'Скин открыт — забери его в магазине',
+    'quests.secretLocked': 'Выполни все задания и получи секретный скин',
+    'quests.toastDone': 'Выполнено задание!',
+    'quests.toastSkin': 'Открыт секретный скин!',
+    'quests.toastSkinSub': 'Забери его в магазине',
+    'quest.dist10k': 'Пробеги 10000 метров',
+    'quest.bottles2000': 'Собери 2000 пузыриков',
+    'quest.runs25': 'Сделай 25 забегов',
+    'quest.skin1': 'Купи скин',
+    'quest.pet1': 'Заведи питомца',
+    'quest.mini5': 'Сыграй в бурмалду 5 раз',
+    'quest.power10': 'Собери 10 улучшений',
+
+    'roulette.title': 'Бурмалда',
+    'roulette.bet': 'Ставка',
+    'roulette.betAria': 'Размер ставки',
+    'roulette.betInc': 'Увеличить ставку',
+    'roulette.betDec': 'Уменьшить ставку',
+    'roulette.chance': 'Шанс выигрыша',
+    'roulette.chanceAria': 'Шанс выигрыша',
+    'roulette.spin': 'Крутить',
+    'roulette.spinning': 'Крутим…',
+    'roulette.potential': 'Возможный выигрыш',
+    'roulette.win': 'Вы выиграли!',
+    'roulette.lose': 'Не повезло',
+    'roulette.noFunds': 'Недостаточно пузыриков для ставки',
+    'roulette.multiplier': 'Множитель при победе: ×{x}',
+    'roulette.lose1': 'Ничего страшного!',
+    'roulette.lose2': 'Не повезло — попробуй ещё раз!',
+    'roulette.lose3': 'В другой раз получится!',
+    'roulette.lose4': 'Почти! Крути ещё.',
+
+    'ad.title': 'Бонус',
+    'ad.watch': 'Смотреть',
+    'ad.waitTitle': 'Подожди',
+    'ad.waitText': 'Награда за рекламу уже получена. Следующая — через {time}.',
+    'ad.askText': 'Посмотреть рекламу за {n} пузыриков?',
+    'ad.okTitle': 'Готово',
+    'ad.okText': '+{n} пузыриков зачислено!',
+    'ad.okBtn': 'Отлично',
+    'ad.loadTitle': 'Реклама',
+    'ad.loadText': 'Загружаем ролик…',
+    'ad.errTitle': 'Не вышло',
+    'ad.errText': 'Награда не засчитана: ролик не был досмотрен до конца или реклама сейчас недоступна.',
+    'ad.errBtn': 'Понятно',
+
+    'skin.schoolboy.name': 'ШКОЛЬНИК',
+    'skin.schoolboy.desc': 'Григорий Ляхов.',
+    'skin.schoolboy2.name': 'ШКОЛЬНИК 2.0',
+    'skin.schoolboy2.desc': 'В рюкзаке 2 сливы и яблоко одно.',
+    'skin.darkdrun.name': 'ТЁМНЫЙ ДРУН',
+    'skin.darkdrun.desc': 'Ангел, возьми мой поцелуй.',
+    'skin.punk.name': 'ПАНК',
+    'skin.punk.desc': 'Он уже красный.',
+    'skin.mell.name': 'МЕЛЛ',
+    'skin.mell.desc': 'Просто босс, просто начальник.',
+    'skin.propeller.name': 'АРТУР',
+    'skin.propeller.desc': 'Привет...',
+
+    'pet.none.name': 'БЕЗ ПИТОМЦА',
+    'pet.none.desc': 'Мэл бежит налегке, без спутника.',
+    'pet.catost.name': 'Котость',
+    'pet.catost.desc': 'Маленький вкусненький малышочек.',
+    'pet.rabbitBurmaldaets.name': 'Заяц Бурмалдаец',
+    'pet.rabbitBurmaldaets.desc': 'В разные периоды времени немного меняется.',
+
+    'yell.1': 'СТОЙ, ХУЛИГАН!',
+    'yell.2': 'ПОПАЛСЯ!',
+    'yell.3': 'БЕГЛЕЦ!',
+    'yell.4': 'В КЛАСС ВЕРНИСЬ!',
+    'yell.5': 'А Я ПРЕДУПРЕЖДАЛА!',
+    'yell.6': 'ДОМОЙ!',
+    'yell.intro': 'МОЙ ДНЕВНИК!!!',
+
+    'world.exit': 'ВЫХОД',
+    'world.caution': 'ОСТОРОЖНО',
+    'world.wet': 'МОКРЫЙ',
+    'world.floor': 'ПОЛ',
+    'world.diary1': 'ДНЕВНИК',
+    'world.diary2': 'МЭЛА'
+  },
+
+  en: {
+    'game.title': 'Mel: Escape from School',
+    'logo.name': 'Mel',
+    'logo.sub': 'Escape from School',
+    'loading.text': 'Loading…',
+    'loading.noThree': 'Error: three.js failed to load',
+    'loading.error': 'Loading failed :(',
+
+    'hud.pause': 'Pause',
+    'hud.meters': 'm',
+    'hud.skip': 'Skip ⏭',
+
+    'menu.curAdd': 'Get bubbles for watching an ad',
+    'menu.settings': 'Settings',
+    'menu.quests': 'Quests',
+    'menu.minigame': 'Mini-game',
+    'menu.best': 'Best, m',
+    'menu.collected': 'Total collected',
+    'menu.play': 'Play',
+    'menu.shop': 'Shop',
+
+    'hint.lanes': 'lanes',
+    'hint.jump': 'jump',
+    'hint.roll': 'slide',
+    'hint.swipeKey': 'swipe',
+    'hint.swipe': 'on mobile',
+
+    'pause.title': 'Paused',
+    'pause.resume': '▶ Resume',
+    'pause.settings': 'Settings',
+    'pause.restart': 'Restart',
+    'pause.menu': 'Main menu',
+
+    'over.title': 'Caught!',
+    'over.newRecord': '🏆 New record!',
+    'over.meters': 'Meters',
+    'over.bottles': 'Bubbles',
+    'over.reviveFor': 'Revive for',
+    'over.again': '▶ Play again',
+    'over.menu': 'Main menu',
+
+    'modal.close': 'Close',
+    'modal.ok': 'OK',
+
+    'shop.back': '← Back',
+    'shop.tabSkins': 'Skins',
+    'shop.tabPets': 'Pets',
+    'shop.prev': 'Previous item',
+    'shop.next': 'Next item',
+    'shop.buy': 'BUY',
+    'shop.select': 'SELECT',
+    'shop.selected': '✓ SELECTED',
+    'shop.locked': 'LOCKED',
+    'shop.free': 'FREE',
+    'shop.owned': 'OWNED',
+    'shop.byQuests': 'UNLOCKED BY QUESTS',
+    'shop.questsProgress': 'QUESTS {done} / {total}',
+    'shop.adBtn': 'WATCH ADS {seen}/{need}',
+    'shop.adLoading': 'LOADING…',
+    'shop.secretDesc': 'A secret skin. Complete every quest to unlock it.',
+    'shop.lockedTitle': 'SKIN LOCKED!',
+    'shop.lockedText': 'This skin is not for sale — it is a reward for completing every quest. Done {done} of {total}.',
+    'shop.noMoneyTitle': 'NOT ENOUGH BUBBLES!',
+    'shop.noMoneySkin': 'You need {n} more bubbles to buy this skin.',
+    'shop.noMoneyPet': 'You need {n} more bubbles to buy this pet.',
+    'shop.boughtTitle': 'PURCHASE COMPLETE!',
+    'shop.adUnlockedTitle': 'UNLOCKED WITH ADS!',
+    'shop.gotSkin': 'This skin is now available in your wardrobe.',
+    'shop.gotPet': 'The pet is now available to choose.',
+    'shop.adFailTitle': 'AD NOT SHOWN',
+    'shop.adFailText': 'The video was not watched to the end, or ads are unavailable right now. Please try again.',
+    'shop.gotIt': 'GOT IT',
+    'shop.okBtn': 'OK',
+
+    'settings.title': 'Settings',
+    'settings.music': 'Music',
+    'settings.sound': 'Sound',
+    'settings.musicAria': 'Music volume',
+    'settings.soundAria': 'Sound volume',
+
+    'quests.title': 'Quests',
+    'quests.reward': 'Reward',
+    'quests.secretName': 'Secret skin',
+    'quests.secretOpen': 'Skin unlocked — pick it up in the shop',
+    'quests.secretLocked': 'Complete every quest to get the secret skin',
+    'quests.toastDone': 'Quest complete!',
+    'quests.toastSkin': 'Secret skin unlocked!',
+    'quests.toastSkinSub': 'Pick it up in the shop',
+    'quest.dist10k': 'Run 10000 meters',
+    'quest.bottles2000': 'Collect 2000 bubbles',
+    'quest.runs25': 'Finish 25 runs',
+    'quest.skin1': 'Buy a skin',
+    'quest.pet1': 'Get a pet',
+    'quest.mini5': 'Play Burmalda 5 times',
+    'quest.power10': 'Collect 10 power-ups',
+
+    'roulette.title': 'Burmalda',
+    'roulette.bet': 'Bet',
+    'roulette.betAria': 'Bet amount',
+    'roulette.betInc': 'Increase bet',
+    'roulette.betDec': 'Decrease bet',
+    'roulette.chance': 'Win chance',
+    'roulette.chanceAria': 'Win chance',
+    'roulette.spin': 'Spin',
+    'roulette.spinning': 'Spinning…',
+    'roulette.potential': 'Potential win',
+    'roulette.win': 'You won!',
+    'roulette.lose': 'No luck',
+    'roulette.noFunds': 'Not enough bubbles to place a bet',
+    'roulette.multiplier': 'Payout multiplier: ×{x}',
+    'roulette.lose1': 'No big deal!',
+    'roulette.lose2': 'Bad luck — give it another go!',
+    'roulette.lose3': 'You will get it next time!',
+    'roulette.lose4': 'So close! Spin again.',
+
+    'ad.title': 'Bonus',
+    'ad.watch': 'Watch',
+    'ad.waitTitle': 'Hold on',
+    'ad.waitText': 'You have already claimed the ad reward. The next one is in {time}.',
+    'ad.askText': 'Watch an ad for {n} bubbles?',
+    'ad.okTitle': 'Done',
+    'ad.okText': '+{n} bubbles added!',
+    'ad.okBtn': 'Great',
+    'ad.loadTitle': 'Ad',
+    'ad.loadText': 'Loading the video…',
+    'ad.errTitle': 'No luck',
+    'ad.errText': 'Reward not granted: the video was not watched to the end, or ads are unavailable right now.',
+    'ad.errBtn': 'Got it',
+
+    'skin.schoolboy.name': 'SCHOOLBOY',
+    'skin.schoolboy.desc': 'Grigory Lyakhov.',
+    'skin.schoolboy2.name': 'SCHOOLBOY 2.0',
+    'skin.schoolboy2.desc': 'Two plums and one apple in the backpack.',
+    'skin.darkdrun.name': 'DARK DROON',
+    'skin.darkdrun.desc': 'Angel, take my kiss.',
+    'skin.punk.name': 'PUNK',
+    'skin.punk.desc': 'He is already red.',
+    'skin.mell.name': 'MELL',
+    'skin.mell.desc': 'Just a boss, just the chief.',
+    'skin.propeller.name': 'ARTHUR',
+    'skin.propeller.desc': 'Hi...',
+
+    'pet.none.name': 'NO PET',
+    'pet.none.desc': 'Mel runs light, with no companion.',
+    'pet.catost.name': 'Catness',
+    'pet.catost.desc': 'A tiny tasty little one.',
+    'pet.rabbitBurmaldaets.name': 'Burmalda Hare',
+    'pet.rabbitBurmaldaets.desc': 'Changes a little from time to time.',
+
+    'yell.1': 'STOP RIGHT THERE!',
+    'yell.2': 'GOTCHA!',
+    'yell.3': 'RUNAWAY!',
+    'yell.4': 'BACK TO CLASS!',
+    'yell.5': 'I WARNED YOU!',
+    'yell.6': 'GO HOME!',
+    'yell.intro': 'MY DIARY!!!',
+
+    'world.exit': 'EXIT',
+    'world.caution': 'CAUTION',
+    'world.wet': 'WET',
+    'world.floor': 'FLOOR',
+    'world.diary1': 'DIARY',
+    'world.diary2': 'OF MEL'
+  },
+
+  tr: {
+    'game.title': 'Mel: Okuldan Kaçış',
+    'logo.name': 'Mel',
+    'logo.sub': 'Okuldan Kaçış',
+    'loading.text': 'Yükleniyor…',
+    'loading.noThree': 'Hata: three.js yüklenemedi',
+    'loading.error': 'Yükleme başarısız :(',
+
+    'hud.pause': 'Duraklat',
+    'hud.meters': 'm',
+    'hud.skip': 'Atla ⏭',
+
+    'menu.curAdd': 'Reklam izleyip baloncuk kazan',
+    'menu.settings': 'Ayarlar',
+    'menu.quests': 'Görevler',
+    'menu.minigame': 'Mini oyun',
+    'menu.best': 'Rekor, m',
+    'menu.collected': 'Toplam toplanan',
+    'menu.play': 'Oyna',
+    'menu.shop': 'Mağaza',
+
+    'hint.lanes': 'şerit',
+    'hint.jump': 'zıpla',
+    'hint.roll': 'kay',
+    'hint.swipeKey': 'kaydır',
+    'hint.swipe': 'telefonda',
+
+    'pause.title': 'Duraklatıldı',
+    'pause.resume': '▶ Devam et',
+    'pause.settings': 'Ayarlar',
+    'pause.restart': 'Baştan başla',
+    'pause.menu': 'Ana menü',
+
+    'over.title': 'Yakalandın!',
+    'over.newRecord': '🏆 Yeni rekor!',
+    'over.meters': 'Metre',
+    'over.bottles': 'Baloncuk',
+    'over.reviveFor': 'Dirilme bedeli',
+    'over.again': '▶ Tekrar oyna',
+    'over.menu': 'Ana menü',
+
+    'modal.close': 'Kapat',
+    'modal.ok': 'Tamam',
+
+    'shop.back': '← Geri',
+    'shop.tabSkins': 'Kostümler',
+    'shop.tabPets': 'Evcil hayvanlar',
+    'shop.prev': 'Önceki seçenek',
+    'shop.next': 'Sonraki seçenek',
+    'shop.buy': 'SATIN AL',
+    'shop.select': 'SEÇ',
+    'shop.selected': '✓ SEÇİLDİ',
+    'shop.locked': 'KİLİTLİ',
+    'shop.free': 'ÜCRETSİZ',
+    'shop.owned': 'SATIN ALINDI',
+    'shop.byQuests': 'GÖREVLERLE AÇILIR',
+    'shop.questsProgress': 'GÖREVLER {done} / {total}',
+    'shop.adBtn': 'REKLAMLA {seen}/{need}',
+    'shop.adLoading': 'YÜKLENİYOR…',
+    'shop.secretDesc': 'Gizli kostüm. Açmak için tüm görevleri tamamla.',
+    'shop.lockedTitle': 'KOSTÜM KİLİTLİ!',
+    'shop.lockedText': 'Bu kostüm satın alınamaz — tüm görevleri tamamlayınca verilir. Tamamlanan: {done} / {total}.',
+    'shop.noMoneyTitle': 'BALONCUK YETERSİZ!',
+    'shop.noMoneySkin': 'Bu kostümü almak için {n} baloncuk daha lazım.',
+    'shop.noMoneyPet': 'Bu evcil hayvanı almak için {n} baloncuk daha lazım.',
+    'shop.boughtTitle': 'SATIN ALMA TAMAM!',
+    'shop.adUnlockedTitle': 'REKLAMLA AÇILDI!',
+    'shop.gotSkin': 'Bu kostüm artık gardırobunda.',
+    'shop.gotPet': 'Evcil hayvan artık seçilebilir.',
+    'shop.adFailTitle': 'REKLAM GÖSTERİLMEDİ',
+    'shop.adFailText': 'Video sonuna kadar izlenmedi ya da şu anda reklam yok. Lütfen tekrar dene.',
+    'shop.gotIt': 'ANLADIM',
+    'shop.okBtn': 'TAMAM',
+
+    'settings.title': 'Ayarlar',
+    'settings.music': 'Müzik',
+    'settings.sound': 'Sesler',
+    'settings.musicAria': 'Müzik sesi',
+    'settings.soundAria': 'Efekt sesi',
+
+    'quests.title': 'Görevler',
+    'quests.reward': 'Ödül',
+    'quests.secretName': 'Gizli kostüm',
+    'quests.secretOpen': 'Kostüm açıldı — mağazadan al',
+    'quests.secretLocked': 'Tüm görevleri tamamla ve gizli kostümü kap',
+    'quests.toastDone': 'Görev tamamlandı!',
+    'quests.toastSkin': 'Gizli kostüm açıldı!',
+    'quests.toastSkinSub': 'Mağazadan al',
+    'quest.dist10k': '10000 metre koş',
+    'quest.bottles2000': '2000 baloncuk topla',
+    'quest.runs25': '25 koşu tamamla',
+    'quest.skin1': 'Bir kostüm satın al',
+    'quest.pet1': 'Bir evcil hayvan edin',
+    'quest.mini5': '5 kez Burmalda oyna',
+    'quest.power10': '10 güçlendirme topla',
+
+    'roulette.title': 'Burmalda',
+    'roulette.bet': 'Bahis',
+    'roulette.betAria': 'Bahis miktarı',
+    'roulette.betInc': 'Bahsi artır',
+    'roulette.betDec': 'Bahsi azalt',
+    'roulette.chance': 'Kazanma şansı',
+    'roulette.chanceAria': 'Kazanma şansı',
+    'roulette.spin': 'Çevir',
+    'roulette.spinning': 'Çevriliyor…',
+    'roulette.potential': 'Olası kazanç',
+    'roulette.win': 'Kazandın!',
+    'roulette.lose': 'Şans yok',
+    'roulette.noFunds': 'Bahis için yeterli baloncuk yok',
+    'roulette.multiplier': 'Kazanç çarpanı: ×{x}',
+    'roulette.lose1': 'Önemli değil!',
+    'roulette.lose2': 'Şanssızlık — bir daha dene!',
+    'roulette.lose3': 'Bir dahaki sefere olur!',
+    'roulette.lose4': 'Az kaldı! Bir daha çevir.',
+
+    'ad.title': 'Bonus',
+    'ad.watch': 'İzle',
+    'ad.waitTitle': 'Biraz bekle',
+    'ad.waitText': 'Reklam ödülünü aldın. Bir sonraki {time} sonra.',
+    'ad.askText': '{n} baloncuk için reklam izlensin mi?',
+    'ad.okTitle': 'Hazır',
+    'ad.okText': '+{n} baloncuk eklendi!',
+    'ad.okBtn': 'Harika',
+    'ad.loadTitle': 'Reklam',
+    'ad.loadText': 'Video yükleniyor…',
+    'ad.errTitle': 'Olmadı',
+    'ad.errText': 'Ödül verilmedi: video sonuna kadar izlenmedi ya da şu anda reklam yok.',
+    'ad.errBtn': 'Anladım',
+
+    'skin.schoolboy.name': 'ÖĞRENCİ',
+    'skin.schoolboy.desc': 'Grigoriy Lyahov.',
+    'skin.schoolboy2.name': 'ÖĞRENCİ 2.0',
+    'skin.schoolboy2.desc': 'Çantasında 2 erik ve bir elma.',
+    'skin.darkdrun.name': 'KARANLIK DRUN',
+    'skin.darkdrun.desc': 'Melek, öpücüğümü al.',
+    'skin.punk.name': 'PUNK',
+    'skin.punk.desc': 'O zaten kırmızı.',
+    'skin.mell.name': 'MELL',
+    'skin.mell.desc': 'Sadece patron, sadece şef.',
+    'skin.propeller.name': 'ARTUR',
+    'skin.propeller.desc': 'Merhaba...',
+
+    'pet.none.name': 'EVCİL HAYVAN YOK',
+    'pet.none.desc': 'Mel yanında kimse olmadan, hafif koşar.',
+    'pet.catost.name': 'Kedilik',
+    'pet.catost.desc': 'Minik, tatlı bir ufaklık.',
+    'pet.rabbitBurmaldaets.name': 'Burmalda Tavşanı',
+    'pet.rabbitBurmaldaets.desc': 'Zaman zaman biraz değişir.',
+
+    'yell.1': 'DUR BAKALIM, HAYLAZ!',
+    'yell.2': 'YAKALADIM!',
+    'yell.3': 'KAÇAK!',
+    'yell.4': 'SINIFA DÖN!',
+    'yell.5': 'SENİ UYARMIŞTIM!',
+    'yell.6': 'EVE!',
+    'yell.intro': 'GÜNLÜĞÜM!!!',
+
+    'world.exit': 'ÇIKIŞ',
+    'world.caution': 'DİKKAT',
+    'world.wet': 'ISLAK',
+    'world.floor': 'ZEMİN',
+    'world.diary1': 'GÜNLÜK',
+    'world.diary2': 'MEL’İN'
+  }
+};

@@ -1,16 +1,16 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
-import { createPetVisual as petCat } from '../assets/models/pet-cat-visual.js';
 import { createPetVisual as petCatost } from '../assets/models/pet-catost-visual.js';
 import { createPetVisual as petRabbitBurmaldaets } from '../assets/models/pet-rabbit-burmaldaets-visual.js';
 
 // Первый элемент — «без питомца», всегда доступен и ничего не строит.
+// Дальше — по возрастанию цены (порядок массива = порядок карусели в магазине).
 // Чтобы добавить нового питомца — достаточно дописать сюда одну строку.
+// nameKey/descKey — ключи словаря source/i18n.js (см. комментарий в skins.js).
 export const PETS = [
-  { id: 'none', name: 'БЕЗ ПИТОМЦА', price: 0, desc: 'Мэл бежит налегке, без спутника.', build: null },
-  { id: 'cat', name: 'КОТИК', price: 5, desc: 'Пушистый и ленивый, но всегда рядом.', build: petCat },
-  { id: 'catost', name: 'Котость', price: 8, desc: 'Круглый трехцветный кот, который всегда рядом.', build: petCatost },
-  { id: 'rabbitBurmaldaets', name: 'Заяц Бурмалдаец', price: 10, desc: 'Очень толстый заяц с покер-фейсом.', build: petRabbitBurmaldaets }
+  { id: 'none', nameKey: 'pet.none.name', price: 0, descKey: 'pet.none.desc', build: null },
+  { id: 'rabbitBurmaldaets', nameKey: 'pet.rabbitBurmaldaets.name', price: 3000, descKey: 'pet.rabbitBurmaldaets.desc', build: petRabbitBurmaldaets },
+  { id: 'catost', nameKey: 'pet.catost.name', price: 10000, descKey: 'pet.catost.desc', build: petCatost }
 ];
 
 export const findPet = id => PETS.find(p => p.id === id) || PETS[0];

@@ -11,6 +11,7 @@ import * as TEX from './textures.js';
 import * as ADR from './adreward.js';
 import * as PWR from './powerups.js';
 import * as RLT from './roulette.js';
+import * as I18N from './i18n.js';
 
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
@@ -22,7 +23,9 @@ export const pet = { node: null, id: '', x: 0, y: 0, z: 0, vy: 0, grounded: true
 export const intro = { t: 0, faceY: Math.PI, grab: false, alert: false, hop: false, turn: false, runStartZ: 0 };
 
 let deskScene = null, segments = [];
-const YELLS = ['СТОЙ, ХУЛИГАН!', 'ПОПАЛСЯ!', 'БЕГЛЕЦ!', 'В КЛАСС ВЕРНИСЬ!', 'А Я ПРЕДУПРЕЖДАЛА!', 'ДОМОЙ!'];
+// Ключи, а не готовые фразы: текст берётся из словаря в момент выкрика, поэтому
+// уточнение языка от SDK (оно приходит позже загрузки модуля) сразу попадает в игру.
+const YELL_KEYS = ['yell.1', 'yell.2', 'yell.3', 'yell.4', 'yell.5', 'yell.6'];
 const PET_GAP_Z = 2.4; // безопасный отступ питомца позади игрока по Z — исключает визуальное слияние моделей на любой скорости/манёвре
 const PET_FOLLOW_X = 8; // скорость догона питомца до ряда игрока
 const PET_MENU_X = 0.75, PET_MENU_Z = -0.7; // смещение питомца рядом с Мэлом в сцене главного меню (подобрано визуально: не перекрывает Мэла и кнопки)
@@ -118,7 +121,7 @@ function stumble(o) {
   granny.closeT = 5; granny.targetZOff = -2.7; G.shake = Math.max(G.shake, 0.45);
   // Рык бабки на столкновении убран по просьбе — раньше синтезированный growl() наслаивался
   // поверх кастомного звука hit, когда growl.mp3 ещё не добавлен. Сам звук растрёпы (hit) остаётся.
-  U.Sound.stumble(); U.replayCss(U.UI.flash); U.setYell(U.pick(YELLS)); ENT.burst(player.x, player.y + 1, player.z, '#ffd94a', 5, 2.2);
+  U.Sound.stumble(); U.replayCss(U.UI.flash); U.setYell(I18N.t(U.pick(YELL_KEYS))); ENT.burst(player.x, player.y + 1, player.z, '#ffd94a', 5, 2.2);
 }
 function caught() {
   G.state = 'over'; G.overT = 0; G.overShown = false; granny.catchMode = true; granny.targetZOff = -0.85; G.shake = 0.8;
@@ -274,7 +277,7 @@ function updateIntro(dt) {
     const s = Math.sin(player.runPhase); n.legL.rotation.x = s; n.legR.rotation.x = -s; n.armL.rotation.x = -s * 0.8; n.inner.position.y = -0.92 + (player.grounded ? Math.abs(Math.cos(player.runPhase)) * 0.06 : 0.02);
   }
   if (!player.grounded) { player.vy -= U.GRAVITY * dt; player.y += player.vy * dt; if (player.y <= 0) { player.y = 0; player.vy = 0; player.grounded = true; player.squash = 0.18; } }
-  if (!intro.alert && t >= 1.6) { intro.alert = true; U.setYell('МОЙ ДНЕВНИК!!!'); U.Sound.growl(); }
+  if (!intro.alert && t >= 1.6) { intro.alert = true; U.setYell(I18N.t('yell.intro')); U.Sound.growl(); }
   const gn = granny.node;
   if (intro.alert) {
     gn.armL.rotation.x = U.damp(gn.armL.rotation.x, -2.4, 6, dt); gn.armR.rotation.x = U.damp(gn.armR.rotation.x, -2.7 + Math.sin(t * 18) * 0.25, 6, dt); gn.headG.rotation.x = U.damp(gn.headG.rotation.x, -0.12, 6, dt); gn.inner.position.y = -0.92 + Math.abs(Math.sin(t * 10)) * 0.1; gn.root.position.x = U.damp(gn.root.position.x, U.GRANNY_INTRO_X, 2.5, dt);
@@ -315,7 +318,7 @@ function updateScoreHud(force) {
   if (m === lastScore && !force) return;
   lastScore = m; syncQuests(); if (!U.UI.score) return;
   // раньше здесь был innerHTML — браузер пересобирал разметку ~20 раз в секунду; теперь меняется только текст
-  if (!scoreNum) { U.UI.score.innerHTML = '<span></span> <small>м</small>'; scoreNum = U.UI.score.firstChild; }
+  if (!scoreNum) { U.UI.score.innerHTML = '<span></span> <small>' + I18N.t('hud.meters') + '</small>'; scoreNum = U.UI.score.firstChild; }
   scoreNum.textContent = m;
 }
 
@@ -437,7 +440,9 @@ function loop(t) {
     // Паверапы до сбора пузыриков: магнит успевает подтянуть их на этом же кадре, а поднятый
     // пикап начинает действовать сразу, не ожидая следующего.
     const got = PWR.update(dt, player.x, player.y, player.z);
-    if (got) { U.Sound.powerup(); ENT.burst(player.x, player.y + 1.1, player.z, got.color, 8, 2.6); G.shake = Math.max(G.shake, 0.18); }
+    // Паверапы копятся сразу в сейв (задание power10): за забег их единицы, так что на кадр
+    // это ничего не стоит, а на диск всё уйдёт вместе с остальным прогрессом в caught().
+    if (got) { U.save.powerups++; U.Sound.powerup(); ENT.burst(player.x, player.y + 1.1, player.z, got.color, 8, 2.6); G.shake = Math.max(G.shake, 0.18); syncQuests(); }
     PWR.updateDouble(dt, player.z);   // раздвоение раньше магнита: подтягивать уже есть что
     PWR.updateMagnet(dt, player.x, player.y, player.z);
     PWR.updateHud(dt);
@@ -482,7 +487,7 @@ function bindInput() {
       // Открытая модалка меню (настройки/задания/заглушка) перехватывает Escape и блокирует Enter:
       // кликами она недоступна (её фон перекрывает меню), а вот с клавиатуры забег стартовал бы прямо под ней.
       case 'Escape': case 'KeyP': if (QST.modalOpen()) QST.closeAll(); else if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); else if (G.state === 'shop') exitShop(); break;
-      case 'Enter': if (QST.modalOpen()) break; if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); break;
+      case 'Enter': if (QST.modalOpen()) break; if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart, true); break;
     }
   });
   const gameEl = U.UI.game;
@@ -528,7 +533,9 @@ function bindInput() {
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
-  on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu); }));
+  // Уход с экрана смерти — единственный выход после каждого проигрыша, поэтому здесь
+  // межстраничная запускается принудительно (force), без нашего кулдауна в 75 секунд.
+  on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart, true); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu, true); }));
   on('reviveBtn', act(() => {
     if (G.state !== 'over' || G.reviveCount >= REVIVE_MAX) return;
     const cost = reviveCost();
@@ -585,8 +592,12 @@ function init() {
 }
 
 U.readLocalSave(); U.syncAudioUI();
+// Ранний язык из браузера: экран загрузки показывается ещё до ответа SDK, и без этого
+// он секунду-другую висел бы по-русски у иностранного игрока. Точный язык площадки
+// придёт из ysdk ниже, до сборки процедурных текстур в init().
+I18N.detectFromBrowser(); I18N.applyStaticTexts();
 function boot() {
-  if (typeof THREE === 'undefined') { const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка: не загружен three.js'; return; }
-  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => U.withTimeout(U.Sdk.loadCloud(), 5000)).then(() => { U.syncAudioUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка загрузки :('; } });
+  if (typeof THREE === 'undefined') { const lt = U.$('loadingText'); if (lt) lt.textContent = I18N.t('loading.noThree'); return; }
+  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => { if (I18N.detectFromSdk(U.Sdk.ysdk)) I18N.applyStaticTexts(); return U.withTimeout(U.Sdk.loadCloud(), 5000); }).then(() => { U.syncAudioUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = I18N.t('loading.error'); } });
 }
 boot();

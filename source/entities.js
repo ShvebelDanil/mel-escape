@@ -2,6 +2,7 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
 import { createGrannyVisual } from '../assets/models/granny-visual.js';
+import { t } from './i18n.js';
 
 export function buildMel(skinId, dark) {
     // dark — чёрный силуэт вместо модели (закрытый секретный скин в магазине)
@@ -40,7 +41,7 @@ export function buildClassroom() {
   GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.28, U.WALL_H - U.DOOR_TOP, U.PART_T - 0.02, '#f0ecd9'), 0, (U.WALL_H + U.DOOR_TOP) / 2, U.CLASS_Z0);
   GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.32, 0.16, U.PART_T + 0.08, '#6d4c2f'), 0, U.DOOR_TOP + 0.06, U.CLASS_Z0);
   const sign = GFX.put(g, new THREE.Mesh(GFX.GPlane(1.3, 0.45), new THREE.MeshBasicMaterial({
-    map: GFX.canvasTex(256, 96, (c) => { c.fillStyle = '#2e7d32'; c.fillRect(0, 0, 256, 96); c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(6, 6, 244, 84); c.fillStyle = '#ffffff'; c.font = 'bold 52px Arial'; c.textAlign = 'center'; c.fillText('ВЫХОД', 128, 66); })
+    map: GFX.canvasTex(256, 96, (c) => { c.fillStyle = '#2e7d32'; c.fillRect(0, 0, 256, 96); c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(6, 6, 244, 84); c.fillStyle = '#ffffff'; c.font = 'bold 52px Arial'; c.textAlign = 'center'; c.fillText(t('world.exit'), 128, 66); })
   })), 0, U.DOOR_TOP + 0.5, U.CLASS_Z0 - U.PART_T / 2 - 0.01); sign.rotation.y = Math.PI;
   for (const dx of [-3.2, 3.2]) { for (const dz of [-4.9, -7.3]) { const d = GFX.put(g, buildDeskMesh(), dx, 0, dz); d.scale.setScalar(0.92); d.rotation.y = Math.PI; } }
   const td = GFX.buildTeacherDesk(); GFX.put(g, td.group, 0, 0, -9.7);

@@ -54,7 +54,9 @@
     color:#ffd94a; letter-spacing:1px; text-transform:uppercase; text-align:center;
     text-shadow:0 3px 0 #7a4b00, 0 6px 14px rgba(0,0,0,0.6);
   }
-  h1.logo span { display:block; color:#fff; font-size:0.62em; text-shadow:0 3px 0 #333, 0 6px 14px rgba(0,0,0,0.6); }
+  /* .sub, а не просто span: имя игры тоже завёрнуто в span (для подстановки перевода),
+     и без класса подзаголовочный стиль применялся бы к обеим строкам. */
+  h1.logo span.sub { display:block; color:#fff; font-size:0.62em; text-shadow:0 3px 0 #333, 0 6px 14px rgba(0,0,0,0.6); }
 
   .btn {
     appearance:none; border:none; cursor:pointer;
@@ -786,6 +788,9 @@
     <circle cx="7.4" cy="9.6" r="1.9"/><circle cx="12" cy="7.5" r="2"/><circle cx="16.6" cy="9.6" r="1.9"/>
     <path d="M12 12.3c2.7 0 4.8 2 4.8 4.2 0 1.7-1.3 2.9-3 2.9-.8 0-1.3-.4-1.8-.4s-1 .4-1.8.4c-1.7 0-3-1.2-3-2.9 0-2.2 2.1-4.2 4.8-4.2z"/>
   </symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24">
+    <path d="M13.2 2 5.8 13.1h4.6L9.9 22l7.6-11.4h-4.9z"/>
+  </symbol>
 </defs></svg>
 
 <div id="game"></div>
@@ -793,9 +798,9 @@
 <!-- HUD -->
 <div id="hud" class="overlay hidden">
   <div id="hudFade"></div>
-  <button id="pauseBtn" aria-label="Пауза"><span></span><span></span></button>
+  <button id="pauseBtn" data-i18n-aria="hud.pause" aria-label="Пауза"><span></span><span></span></button>
   <div id="hudRight">
-    <div id="score">0 <small>м</small></div>
+    <div id="score">0 <small data-i18n="hud.meters">м</small></div>
     <div id="bottleCount"><span id="bottleNum">0</span><img id="bottleIcon" alt=""></div>
   </div>
   <div id="comboText"><span></span></div>
@@ -811,89 +816,89 @@
 <div id="yell"></div>
 
 <!-- Кнопка пропуска интро -->
-<button id="skipIntroBtn" class="btn hidden">Пропустить ⏭</button>
+<button id="skipIntroBtn" class="btn hidden" data-i18n="hud.skip">Пропустить ⏭</button>
 
 <!-- Loading -->
 <div id="loading" class="overlay">
-  <h1 class="logo">Мэл<span>Побег из школы</span></h1>
+  <h1 class="logo"><span data-i18n="logo.name">Мэл</span><span class="sub" data-i18n="logo.sub">Побег из школы</span></h1>
   <div class="spinner"></div>
-  <div class="lt" id="loadingText">Загрузка…</div>
+  <div class="lt" id="loadingText" data-i18n="loading.text">Загрузка…</div>
 </div>
 
 <!-- Menu -->
 <div id="menu" class="overlay hidden">
-  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" aria-label="Получить пузырики за рекламу"></button></div>
+  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" data-i18n-aria="menu.curAdd" aria-label="Получить пузырики за рекламу"></button></div>
   <div id="menuTools">
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" data-i18n-aria="menu.settings" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" data-i18n-aria="menu.quests" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" data-i18n-aria="menu.minigame" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
   </div>
-  <h1 class="logo">Мэл<span>Побег из школы</span></h1>
+  <h1 class="logo"><span data-i18n="logo.name">Мэл</span><span class="sub" data-i18n="logo.sub">Побег из школы</span></h1>
   <div class="stats-box">
-    <div class="stat"><div class="v" id="menuBest">0</div><div class="l" id="menuBestLabel">Рекорд, м</div></div>
-    <div class="stat"><div class="v"><img id="menuBottleIcon" alt=""><span id="menuBottles">0</span></div><div class="l" id="menuBottlesLabel">Всего собрано</div></div>
+    <div class="stat"><div class="v" id="menuBest">0</div><div class="l" id="menuBestLabel" data-i18n="menu.best">Рекорд, м</div></div>
+    <div class="stat"><div class="v"><img id="menuBottleIcon" alt=""><span id="menuBottles">0</span></div><div class="l" id="menuBottlesLabel" data-i18n="menu.collected">Всего собрано</div></div>
   </div>
   <div class="menu-actions">
-    <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span>Играть</button>
-    <button class="menu-btn menu-btn--secondary" id="shopBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bag"/></svg>Магазин</button>
+    <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span><span data-i18n="menu.play">Играть</span></button>
+    <button class="menu-btn menu-btn--secondary" id="shopBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bag"/></svg><span data-i18n="menu.shop">Магазин</span></button>
   </div>
   <div class="hint-row">
-    <span><b>←</b><b>→</b> полосы</span>
-    <span><b>↑</b> прыжок</span>
-    <span><b>↓</b> подкат</span>
-    <span><b>свайпы</b> на телефоне</span>
+    <span><b>←</b><b>→</b> <span data-i18n="hint.lanes">полосы</span></span>
+    <span><b>↑</b> <span data-i18n="hint.jump">прыжок</span></span>
+    <span><b>↓</b> <span data-i18n="hint.roll">подкат</span></span>
+    <span><b data-i18n="hint.swipeKey">свайпы</b> <span data-i18n="hint.swipe">на телефоне</span></span>
   </div>
 </div>
 
 <!-- Pause -->
 <div id="pause" class="overlay hidden">
   <div class="stack-panel">
-    <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
-    <button class="btn" id="resumeBtn">▶ Продолжить</button>
-    <button class="btn ghost" id="pauseSettingsBtn">Настройки</button>
-    <button class="btn ghost" id="restartBtn">Заново</button>
-    <button class="btn ghost" id="pauseMenuBtn">В меню</button>
+    <h1 class="logo" style="font-size:clamp(28px,7vw,48px)" data-i18n="pause.title">Пауза</h1>
+    <button class="btn" id="resumeBtn" data-i18n="pause.resume">▶ Продолжить</button>
+    <button class="btn ghost" id="pauseSettingsBtn" data-i18n="pause.settings">Настройки</button>
+    <button class="btn ghost" id="restartBtn" data-i18n="pause.restart">Заново</button>
+    <button class="btn ghost" id="pauseMenuBtn" data-i18n="pause.menu">В меню</button>
   </div>
   <div class="hint-row">
-    <span><b>←</b><b>→</b> полосы</span>
-    <span><b>↑</b> прыжок</span>
-    <span><b>↓</b> подкат</span>
-    <span><b>свайпы</b> на телефоне</span>
+    <span><b>←</b><b>→</b> <span data-i18n="hint.lanes">полосы</span></span>
+    <span><b>↑</b> <span data-i18n="hint.jump">прыжок</span></span>
+    <span><b>↓</b> <span data-i18n="hint.roll">подкат</span></span>
+    <span><b data-i18n="hint.swipeKey">свайпы</b> <span data-i18n="hint.swipe">на телефоне</span></span>
   </div>
 </div>
 
 <!-- Game over -->
 <div id="over" class="overlay hidden">
-  <div class="over-title" id="overTitle">Попался!</div>
-  <div class="new-record hidden" id="newRecord">🏆 Новый рекорд!</div>
+  <div class="over-title" id="overTitle" data-i18n="over.title">Попался!</div>
+  <div class="new-record hidden" id="newRecord" data-i18n="over.newRecord">🏆 Новый рекорд!</div>
   <div class="stack-panel">
     <div class="stats-box">
-      <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
-      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Пузыриков</div></div>
+      <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel" data-i18n="over.meters">Метров</div></div>
+      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel" data-i18n="over.bottles">Пузыриков</div></div>
     </div>
-    <button class="btn hidden" id="reviveBtn">Восстать за <span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
-    <button class="btn ghost" id="againBtn">▶ Ещё раз</button>
-    <button class="btn ghost" id="overMenuBtn">В меню</button>
+    <button class="btn hidden" id="reviveBtn"><span data-i18n="over.reviveFor">Восстать за</span><span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
+    <button class="btn ghost" id="againBtn" data-i18n="over.again">▶ Ещё раз</button>
+    <button class="btn ghost" id="overMenuBtn" data-i18n="over.menu">В меню</button>
   </div>
 </div>
 
 <!-- Shop -->
 <div id="shop" class="overlay hidden">
   <div id="shopTop">
-    <button class="btn ghost small" id="shopBackBtn">← Назад</button>
+    <button class="btn ghost small" id="shopBackBtn" data-i18n="shop.back">← Назад</button>
     <div class="cur-badge"><img id="shopCurIcon" alt=""><span id="shopCurrency">0</span></div>
   </div>
   <div id="shopTabs">
-    <button class="tab-btn" id="shopTabSkins" data-active="1">Скины</button>
-    <button class="tab-btn" id="shopTabPets">Питомцы</button>
+    <button class="tab-btn" id="shopTabSkins" data-active="1" data-i18n="shop.tabSkins">Скины</button>
+    <button class="tab-btn" id="shopTabPets" data-i18n="shop.tabPets">Питомцы</button>
   </div>
-  <button class="arrow-btn" id="skinPrevBtn" aria-label="Предыдущий вариант">❮</button>
-  <button class="arrow-btn" id="skinNextBtn" aria-label="Следующий вариант">❯</button>
+  <button class="arrow-btn" id="skinPrevBtn" data-i18n-aria="shop.prev" aria-label="Предыдущий вариант">❮</button>
+  <button class="arrow-btn" id="skinNextBtn" data-i18n-aria="shop.next" aria-label="Следующий вариант">❯</button>
   <div id="skinCard">
     <div id="skinName">—</div>
     <div id="skinDesc"></div>
     <div id="skinPrice" data-state="free"></div>
-    <button id="skinAction" data-state="buy">Купить</button>
+    <button id="skinAction" data-state="buy" data-i18n="shop.buy">Купить</button>
     <!-- Альтернативная покупка за просмотр роликов. Текст, число роликов и показ/скрытие — source/shop.js -->
     <button id="skinAdBtn" class="hidden" data-busy="0"></button>
     <div id="skinDots"></div>
@@ -903,11 +908,11 @@
 <!-- Модалка магазина -->
 <div id="shopModal" class="hidden" data-kind="ok">
   <div class="box">
-    <button id="shopModalClose" aria-label="Закрыть">✕</button>
+    <button id="shopModalClose" data-i18n-aria="modal.close" aria-label="Закрыть">✕</button>
     <img id="shopModalIcon" alt="">
     <div id="shopModalTitle"></div>
     <div id="shopModalText"></div>
-    <button class="btn small" id="shopModalBtn">Ок</button>
+    <button class="btn small" id="shopModalBtn" data-i18n="modal.ok">Ок</button>
   </div>
 </div>
 
@@ -916,16 +921,16 @@
      save.musicVol/save.soundVol (проценты), состояние UI проставляет syncAudioUI() в utils.js. -->
 <div id="settingsModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="settingsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t">Настройки</span></div></div>
+    <button class="modal-close" id="settingsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t" data-i18n="settings.title">Настройки</span></div></div>
     <div id="settingsList">
       <div class="set-row ui-tile vol-row">
-        <div class="vol-head"><span class="n">Музыка</span><span class="vol-val">100%</span></div>
-        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость музыки"></div>
+        <div class="vol-head"><span class="n" data-i18n="settings.music">Музыка</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="settings.musicAria" aria-label="Громкость музыки"></div>
       </div>
       <div class="set-row ui-tile vol-row">
-        <div class="vol-head"><span class="n">Звуки</span><span class="vol-val">100%</span></div>
-        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость звуков"></div>
+        <div class="vol-head"><span class="n" data-i18n="settings.sound">Звуки</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="settings.soundAria" aria-label="Громкость звуков"></div>
       </div>
     </div>
   </div>
@@ -934,13 +939,13 @@
 <!-- Задания (кнопка 📋). Карточки строит source/quests.js по массиву QUESTS. -->
 <div id="questsModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="questsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></span><span class="t">Задания</span></div></div>
+    <button class="modal-close" id="questsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></span><span class="t" data-i18n="quests.title">Задания</span></div></div>
     <!-- Приз за все задания. Текст, прогресс и силуэт проставляет source/quests.js -->
     <div id="secretQuest" class="ui-tile" data-done="0">
       <div class="q-icon"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-shirt"/></svg></div>
       <div class="q-main">
-        <div class="q-name">Секретный скин</div>
+        <div class="q-name" data-i18n="quests.secretName">Секретный скин</div>
         <div class="sq-sub"></div>
         <div class="q-row"><div class="q-bar"><i></i></div><div class="q-prog"></div></div>
       </div>
@@ -953,28 +958,28 @@
 <!-- Рулетка пузыриков (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
 <div id="rouletteModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="rouletteClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Бурмалда</span></div></div>
+    <button class="modal-close" id="rouletteClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" data-i18n="roulette.title">Бурмалда</span></div></div>
     <div class="rlt-body">
       <div class="rlt-topbar">
         <div class="cur-badge"><img id="rouletteCurIcon" alt=""><span id="rouletteCurrency">0</span></div>
       </div>
       <div class="rlt-col rlt-mid">
         <div class="rlt-panel ui-tile">
-          <div class="rlt-label">Ставка</div>
+          <div class="rlt-label" data-i18n="roulette.bet">Ставка</div>
           <div class="rlt-bet">
             <img id="rouletteBetIcon" alt="">
-            <input class="rlt-bet-val" id="rouletteBetVal" type="text" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Размер ставки">
+            <input class="rlt-bet-val" id="rouletteBetVal" type="text" inputmode="numeric" pattern="[0-9]*" value="100" data-i18n-aria="roulette.betAria" aria-label="Размер ставки">
             <div class="rlt-bet-steps">
               <button class="rlt-allin" id="rouletteAllIn">ALL</button>
-              <button id="rouletteBetInc" aria-label="Увеличить ставку">▲</button>
-              <button id="rouletteBetDec" aria-label="Уменьшить ставку">▼</button>
+              <button id="rouletteBetInc" data-i18n-aria="roulette.betInc" aria-label="Увеличить ставку">▲</button>
+              <button id="rouletteBetDec" data-i18n-aria="roulette.betDec" aria-label="Уменьшить ставку">▼</button>
             </div>
           </div>
         </div>
         <div class="rlt-panel ui-tile">
-          <div class="rlt-label">Шанс выигрыша</div>
-          <input class="vol-slider rlt-slider" id="rouletteChanceSlider" type="range" min="5" max="75" step="1" value="50" aria-label="Шанс выигрыша">
+          <div class="rlt-label" data-i18n="roulette.chance">Шанс выигрыша</div>
+          <input class="vol-slider rlt-slider" id="rouletteChanceSlider" type="range" min="5" max="75" step="1" value="50" data-i18n-aria="roulette.chanceAria" aria-label="Шанс выигрыша">
           <div class="rlt-chance-presets">
             <button id="rouletteChance10" data-active="0">10%</button>
             <button id="rouletteChance30" data-active="0">30%</button>
@@ -982,7 +987,7 @@
             <button id="rouletteChance75" data-active="0">75%</button>
           </div>
         </div>
-        <button class="btn rlt-spin" id="rouletteSpinBtn">Крутить</button>
+        <button class="btn rlt-spin" id="rouletteSpinBtn" data-i18n="roulette.spin">Крутить</button>
       </div>
       <div class="rlt-hint" id="rouletteHint" data-warn="0"></div>
       <div class="rlt-col rlt-wheelcol">
@@ -993,7 +998,7 @@
         </div>
       </div>
       <div class="rlt-col rlt-result" id="rouletteResult" data-state="idle">
-        <div class="rlt-result-title" id="rouletteResultTitle">Возможный выигрыш</div>
+        <div class="rlt-result-title" id="rouletteResultTitle" data-i18n="roulette.potential">Возможный выигрыш</div>
         <div class="rlt-result-body" id="rouletteResultBody"><img id="rouletteResultIcon" alt=""><span id="rouletteResultAmount">190</span></div>
         <div class="rlt-result-text hidden" id="rouletteResultText"></div>
       </div>
@@ -1005,11 +1010,11 @@
      (ask / wait / ok / err) и сам показ рекламы — в source/adreward.js. -->
 <div id="adRewardModal" class="menu-modal hidden" data-state="ask">
   <div class="box" style="align-items:center; text-align:center;">
-    <button class="modal-close" id="adRewardClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" id="adRewardTitle">Бонус</span></div></div>
+    <button class="modal-close" id="adRewardClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" id="adRewardTitle" data-i18n="ad.title">Бонус</span></div></div>
     <img id="adRewardIcon" alt="">
     <div id="adRewardText"></div>
-    <button class="btn small" id="adRewardBtn">Смотреть</button>
+    <button class="btn small" id="adRewardBtn" data-i18n="ad.watch">Смотреть</button>
   </div>
 </div>
 
