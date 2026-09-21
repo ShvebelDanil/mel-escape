@@ -7,6 +7,14 @@
 <!-- Текстура монеты нужна и WebGL, и иконкам HUD: просим браузер начать качать её сразу,
      параллельно с three.js. Браузер без WebP пропустит строку из-за type и возьмёт .png из JS. -->
 <link rel="preload" as="image" type="image/webp" href="assets/textures/bottle.webp">
+<!-- Скрипты подключены здесь и все с defer. defer НЕ означает «как получится»: отложенные
+     классические скрипты и модули выполняются строго в порядке объявления, после разбора HTML.
+     Поэтому YaGames точно существует к запуску main.js, а THREE — к его импортам. Зачем так:
+     sdk.js лежит на чужом S3 и может отвечать медленно; подключённый синхронно, он останавливал
+     разбор документа и вместе с собой тормозил three.js и всю загрузку. -->
+<script defer src="https://sdk.games.s3.yandex.net/sdk.js"></script>
+<script defer src="lib/three.min.js"></script>
+<script type="module" src="source/main.js"></script>
 <style>
   /* Общие цвета всплывающих окон: тёмно-серая панель и затемнение сцены под ней.
      Намеренно БЕЗ backdrop-filter: размытие фона заставляет браузер держать копию всего
@@ -25,15 +33,17 @@
   #game { position:fixed; inset:0; }
   #game canvas { display:block; width:100%; height:100%; }
 
+  /* Затемнение — вертикальный градиент, а не плоская заливка: центр экрана светлее, края глуше,
+     поэтому панель читается «над сценой» без размытия. Градиент растеризуется один раз в слой
+     и дальше только композитится, то есть в кадре стоит ноль. */
   .overlay {
     position:fixed; inset:0; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px;
     z-index:10; padding:20px; text-align:center;
-    background:rgba(10,20,16,0.55);
-    -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    background:linear-gradient(180deg, rgba(8,16,13,0.74) 0%, rgba(10,20,16,0.62) 45%, rgba(8,16,13,0.76) 100%);
   }
   .overlay.hidden, .hidden { display:none !important; }
-  .transparent-bg { background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+  .transparent-bg { background:transparent; pointer-events:none; }
 
   h1.logo {
     font-size:clamp(34px, 9vw, 66px); line-height:1.04; font-weight:900;
@@ -95,18 +105,41 @@
   #loading .lt { color:#cfe8d8; font-size:15px; }
 
   #hud { z-index:5; justify-content:flex-start; align-items:stretch; flex-direction:row;
-    background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+    background:transparent; pointer-events:none; }
   #hudRight {
     position:absolute; top:calc(10px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right));
     display:flex; flex-direction:column; align-items:flex-end; gap:4px;
   }
-  #score { font-size:clamp(24px,6vw,44px); font-weight:900; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5); }
-  #score small { font-size:0.55em; font-weight:700; opacity:.85; }
-  #bottleCount {
-    color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5);
-    font-size:clamp(19px,5vw,34px); font-weight:900; display:flex; align-items:center; gap:6px;
+  /* Показатели забега читаются поверх любого фона — от тёмного пола до белого потолка —
+     за счёт контурной обводки, а не плашки. paint-order:stroke fill кладёт обводку ПОД
+     заливку, поэтому буквы не «худеют», как было бы при обычном text-stroke.
+     Толщина в em, чтобы контур масштабировался вместе со шрифтом.
+     Размер через vmin, а не vw: на широком мониторе vw даёт огромное число и упирается
+     в потолок clamp, из-за чего HUD выглядел мелким. vmin считает по короткой стороне. */
+  #score, #bottleCount {
+    -webkit-text-stroke:0.07em rgba(0,0,0,0.62); paint-order:stroke fill;
+    text-shadow:0 2px 6px rgba(0,0,0,0.45);
   }
-  #bottleCount img { height:1em; }
+  /* Золотой — средняя точка градиента кнопки «Играть» (#ffe066 → #ffb400), а не его
+     светлый верхний стоп: именно так кнопка читается целиком, и насыщенный тон не блёкнет
+     на бежевых стенах школы. Метры сразу отделяются цветом от белых чекушек. */
+  #score { font-size:clamp(26px,5.6vmin,54px); font-weight:900; color:#ffca33; }
+  #score small { font-size:0.55em; font-weight:700; opacity:.9; }
+  #bottleCount {
+    color:#fff; font-size:clamp(20px,4.3vmin,40px); font-weight:900;
+    display:flex; align-items:center; gap:6px;
+  }
+  /* Иконке обводка не нужна (это PNG) — ей хватает тени, чтобы не теряться на потолке. */
+  #bottleCount img { height:1em; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55)); }
+
+  /* Мягкое затемнение верха кадра под HUD. Не рамка и не окно: градиент уходит в полную
+     прозрачность, границы не видно, но фон под цифрами всегда темнее текста.
+     Обычная заливка слоя — ни layout, ни перерисовки в кадре не стоит. */
+  #hudFade {
+    position:absolute; top:0; left:0; right:0; height:clamp(110px,20vmin,190px);
+    pointer-events:none;
+    background:linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.16) 55%, rgba(0,0,0,0) 100%);
+  }
   #pauseBtn {
     position:absolute; top:calc(10px + env(safe-area-inset-top)); left:calc(14px + env(safe-area-inset-left));
     pointer-events:auto; cursor:pointer; appearance:none; border:1px solid rgba(255,255,255,0.25);
@@ -121,7 +154,8 @@
   }
   #comboText span {
     display:inline-block; font-size:clamp(24px,6.5vw,36px); font-weight:900; color:#ffe066;
-    text-shadow:0 2px 0 rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+    -webkit-text-stroke:0.07em rgba(0,0,0,0.62); paint-order:stroke fill;
+    text-shadow:0 2px 10px rgba(0,0,0,0.5);
   }
   #comboText.on { opacity:1; }
   #comboText.on span { animation:comboPop .3s ease; }
@@ -154,12 +188,15 @@
   }
   .buff img { position:absolute; left:0; right:0; top:9px; margin:0 auto; width:52px; height:52px; object-fit:contain; display:block; }
   /* последние секунды баффа */
-  .buff.low img, .buff.low .buff-bar { animation:buffBlink .6s ease-in-out infinite; }
+  .buff.low img, .buff.low .buff-bar { animation:buffBlink .75s ease-in-out infinite; }
   @keyframes buffPop { 0%{transform:scale(0.4); opacity:0;} 65%{transform:scale(1.14); opacity:1;} 100%{transform:scale(1); opacity:1;} }
-  @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
 
-  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
-    box-shadow:inset 0 0 140px 40px rgba(220,30,30,0.85); }
+  /* Красная виньетка удара. Radial-gradient вместо inset box-shadow с blur 140px:
+     картинка та же, но градиент — обычная заливка слоя, а не отдельный проход размытия.
+     will-change готовит слой заранее, чтобы первый удар не стоил растеризации в кадре. */
+  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0; will-change:opacity;
+    background:radial-gradient(ellipse 72% 62% at 50% 50%, rgba(220,30,30,0) 0%, rgba(220,30,30,0) 52%, rgba(220,30,30,0.5) 78%, rgba(220,30,30,0.88) 100%); }
   #flash.on { animation:flashAnim .5s ease-out; }
   @keyframes flashAnim { 0%{opacity:1;} 100%{opacity:0;} }
 
@@ -223,7 +260,11 @@
   #menu .cur-badge img { height:1.3em; }
 
   #menu .stats-box { width:min(300px, 82vw); box-sizing:border-box; justify-content:space-between; }
-  #menu .menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; width:min(300px, 82vw); margin-top:4px; }
+  /* --menu-btn-h: общая высота кнопок меню. Значение = прежняя высота «Играть»
+     (2*16px паддинга + ~1.2 строки шрифта clamp(18px,4.5vw,24px)), развёрнутая
+     в одну формулу, чтобы обе кнопки росли по ширине экрана синхронно. */
+  #menu .menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; width:min(300px, 82vw); margin-top:4px;
+    --menu-btn-h:clamp(54px, calc(32px + 5.4vw), 61px); }
 
   .menu-btn {
     appearance:none; border:none; cursor:pointer; font-family:inherit;
@@ -233,27 +274,31 @@
   }
   .menu-btn:active { transform:translateY(3px); }
   .menu-btn-icon { font-size:1.1em; line-height:1; }
+  /* Иконка-глиф внутри текстовой кнопки меню. Общий .ic задаёт 50% от размера
+     кнопки — это про квадратные .menu-btn--tool, здесь нужен размер по тексту. */
+  .menu-btn .menu-btn-ic { width:1.3em; height:1.3em; flex:0 0 auto; }
 
   .menu-btn--play {
     font-weight:800; color:#3a2a00;
     background:linear-gradient(180deg,#ffe066,#ffb400);
-    padding:16px 28px; font-size:clamp(18px,4.5vw,24px);
+    min-height:var(--menu-btn-h); padding:0 28px; font-size:clamp(18px,4.5vw,24px);
     box-shadow:0 5px 0 #b57e00, 0 10px 20px rgba(0,0,0,0.45);
   }
   .menu-btn--play:active { box-shadow:0 1px 0 #b57e00, 0 4px 10px rgba(0,0,0,0.45); }
 
-  .menu-btn-row { display:flex; gap:10px; }
+  /* Вторичная кнопка меню («Магазин»). Ширину задаёт колонка .menu-actions
+     (align-items:stretch), поэтому своей flex-базы не нужно. */
   .menu-btn--secondary {
-    flex:1 1 0; min-width:0; font-weight:700; color:#fff;
+    min-width:0; font-weight:700; color:#fff;
     background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22);
-    padding:12px 10px; font-size:clamp(13px,3.2vw,16px); gap:7px;
+    min-height:var(--menu-btn-h); padding:0 16px; font-size:clamp(14px,3.6vw,18px); gap:8px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     box-shadow:0 4px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.35);
   }
   .menu-btn--secondary:active { box-shadow:0 1px 0 rgba(0,0,0,0.35); }
 
   #shop { justify-content:flex-end; gap:0; padding:0;
-    background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+    background:transparent; pointer-events:none; }
   #shop > * { pointer-events:auto; }
   #shopTop { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left));
     right:calc(12px + env(safe-area-inset-right)); display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -348,7 +393,7 @@
   /* ===== Панель инструментов меню (настройки / задания / мини-игра) =====
      Вертикальная колонка в правом верхнем углу. Живёт внутри #menu, поэтому
      показывается/прячется вместе с меню — отдельной логики видимости не нужно.
-     Кнопки намеренно переиспользуют классы «Магазина»/«Питомцев»
+     Кнопки намеренно переиспользуют класс кнопки «Магазин»
      (.menu-btn.menu-btn--secondary) — модификатор ниже задаёт только квадратную
      форму, а цвет/тени/нажатие берутся из общего стиля меню. */
   #menuTools {
@@ -356,7 +401,7 @@
     display:flex; flex-direction:column; gap:10px;
   }
   .menu-btn--tool {
-    flex:0 0 auto; padding:0;
+    flex:0 0 auto; padding:0; min-height:auto;
     width:clamp(44px,12vw,52px); height:clamp(44px,12vw,52px);
   }
   /* Иконки — одноцветные линейные SVG из спрайта (#ic-*), цвет наследуется
@@ -687,6 +732,13 @@
     <circle cx="12" cy="12" r="2.6"/>
     <path d="M6.2 12h.02M17.8 12h.02"/>
   </symbol>
+  <!-- Пакет с покупками: корпус с загнутым верхом + дуга-ручка. Только обводка,
+       как у остальных иконок, поэтому цвет берётся из currentColor кнопки. -->
+  <symbol id="ic-bag" viewBox="0 0 24 24">
+    <path d="M7.6 3.2h8.8l2.8 3.8v12.2a1.8 1.8 0 0 1-1.8 1.8H6.6a1.8 1.8 0 0 1-1.8-1.8V7z"/>
+    <path d="M4.8 7h14.4"/>
+    <path d="M15.3 10.4a3.3 3.3 0 0 1-6.6 0"/>
+  </symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5.2 12.6l4.6 4.6L18.8 7.2"/></symbol>
   <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></symbol>
   <!-- Иконки заданий: id совпадает с полем icon в QUESTS (source/quests.js). -->
@@ -715,6 +767,7 @@
 
 <!-- HUD -->
 <div id="hud" class="overlay hidden">
+  <div id="hudFade"></div>
   <button id="pauseBtn" aria-label="Пауза"><span></span><span></span></button>
   <div id="hudRight">
     <div id="score">0 <small>м</small></div>
@@ -757,10 +810,7 @@
   </div>
   <div class="menu-actions">
     <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span>Играть</button>
-    <div class="menu-btn-row">
-      <button class="menu-btn menu-btn--secondary" id="shopBtn">Магазин</button>
-      <button class="menu-btn menu-btn--secondary" id="petsBtn">Питомцы</button>
-    </div>
+    <button class="menu-btn menu-btn--secondary" id="shopBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bag"/></svg>Магазин</button>
   </div>
   <div class="hint-row">
     <span><b>←</b><b>→</b> полосы</span>
@@ -941,10 +991,5 @@
 <!-- Уведомления о выполненных заданиях (наполняется из source/quests.js) -->
 <div id="questToasts"></div>
 
-<script src="https://sdk.games.s3.yandex.net/sdk.js"></script>
-<!-- Подключаем библиотеку из новой папки lib -->
-<script src="lib/three.min.js"></script>
-<!-- ТЕПЕРЬ ПОДКЛЮЧАЕМ ГЛАВНЫЙ ФАЙЛ КАК МОДУЛЬ -->
-<script type="module" src="source/main.js"></script>
 </body>
 </html>

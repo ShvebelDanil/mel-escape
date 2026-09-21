@@ -142,7 +142,6 @@ function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.sa
 // награда должна попасть в плашку валюты тем же кадром, что и само меню.
 function showMenu() { setupMenuScene(); QST.closeAll(); QST.check(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); U.Sound.setMusic('menu'); }
 function openShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open(); }
-function openPetsShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open('pets'); }
 function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
 function applyPlayerSkin(id, dark) {
   const next = ENT.buildMel(id, dark); if (next === player.node) return;
@@ -403,6 +402,18 @@ function animateGranny(dt) {
   else { n.armL.rotation.x = -s * 0.7; n.armR.rotation.x = -1.9 + Math.sin(granny.phase * 0.7) * 0.35; n.headG.rotation.x = 0; n.inner.position.y = -0.92 + Math.abs(Math.cos(granny.phase)) * 0.1; n.inner.rotation.z = s * 0.04; }
 }
 
+// Адаптивное разрешение работает не только в забеге: слабое устройство должно определиться
+// ещё в меню, а не через полторы секунды после старта. Но первые кадры нового экрана дороже
+// из-за компиляции шейдеров и раскладки UI, поэтому после каждой смены состояния даём сцене
+// прогреться и только потом начинаем мерить — иначе разрешение упадёт на ровном месте.
+const TUNE_WARM_UP = 1.5;
+let tuneWarm = 0, tunePrevState = '';
+function tuneFrame(dt) {
+  if (G.state !== tunePrevState) { tunePrevState = G.state; tuneWarm = TUNE_WARM_UP; return; }
+  if (tuneWarm > 0) { tuneWarm -= dt; if (tuneWarm <= 0) GFX.resetResolution(); return; }
+  GFX.tuneResolution(dt);
+}
+
 let lastT = 0;
 function loop(t) {
   requestAnimationFrame(loop); const dt = U.clamp((t - lastT) / 1000, 0, 0.05); lastT = t;
@@ -414,7 +425,7 @@ function loop(t) {
     if (pausedW !== cv.width || pausedH !== cv.height) { pausedW = cv.width; pausedH = cv.height; GFX.renderer.render(GFX.scene, GFX.camera); }
     return;
   }
-  if (G.state === 'shop') { SHOP.update(dt); GFX.renderer.render(GFX.scene, GFX.camera); return; }
+  if (G.state === 'shop') { SHOP.update(dt); GFX.renderer.render(GFX.scene, GFX.camera); tuneFrame(dt); return; }
   if (G.state === 'run') {
     G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
     player.groundY = getGroundY();
@@ -456,7 +467,7 @@ function loop(t) {
   ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
   PWR.faceCamera();         // по той же причине здесь, а не в PWR.update()
   GFX.renderer.render(GFX.scene, GFX.camera);
-  if (G.state === 'run') GFX.tuneResolution(dt); // мерим только забег: в меню первые кадры дороже из-за компиляции шейдеров
+  tuneFrame(dt);
 }
 
 function bindInput() {
@@ -486,7 +497,7 @@ function bindInput() {
   // Уходя со вкладки, глушим звук в ЛЮБОМ состоянии: раньше в меню/на экране смерти музыка
   // продолжала играть в фоне (Яндекс.Игры это не пропускают).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); U.Sound.pauseAll(); }
+    if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); U.Sound.pauseAll(); U.flushSave(); }
     else if (G.state !== 'paused') U.Sound.resumeAll();
   });
   // Свёрнутое окно или переключение в другую программу/окно браузера visibilitychange НЕ ловит:
@@ -499,6 +510,10 @@ function bindInput() {
     if (G.state === 'run') pauseRun();
     U.Sound.pauseAll();
   });
+  // Закрытие вкладки visibilitychange застаёт не всегда (на мобильных особенно), а pagehide —
+  // последнее событие, которое гарантированно приходит перед выгрузкой страницы. Дублируем сброс
+  // сейва здесь: flushSave сам проверит, есть ли что писать, поэтому двойного запроса не будет.
+  window.addEventListener('pagehide', () => U.flushSave());
   window.addEventListener('focus', () => {
     if (U.adBusy || document.hidden) return;
     if (G.state !== 'paused') U.Sound.resumeAll();
@@ -507,7 +522,6 @@ function bindInput() {
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
   on('shopBtn', act(openShop));
-  on('petsBtn', act(openPetsShop));
   on('settingsBtn', act(() => QST.openSettings()));
   on('questsBtn', act(() => QST.openQuests()));
   on('minigameBtn', act(() => RLT.open()));

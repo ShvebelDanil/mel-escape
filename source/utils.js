@@ -113,6 +113,16 @@ export function persistSave() {
   cloudSave();
   cloudTimer = setTimeout(() => { cloudTimer = null; if (cloudPending) { cloudPending = false; persistSave(); } }, 2500);
 }
+// Немедленная запись в обход дебаунса — для ухода со вкладки и закрытия игры. Без неё прогресс
+// последних 2.5 секунд (купленный скин, добитое задание) оставался только в localStorage и терялся
+// при заходе с другого устройства. cloudPending здесь и есть признак «есть незаписанное»:
+// если его нет, данные уже в облаке и лишний setData только тратит лимит запросов Яндекса.
+export function flushSave() {
+  if (!Sdk.ysdk || !cloudPending) return;
+  cloudPending = false;
+  if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = null; }
+  cloudSave();
+}
 
 export const Sdk = {
   ysdk: null, playerPromise: null,
@@ -173,20 +183,38 @@ export function withTimeout(p, ms) {
 
 export let adBusy = false;
 export function setAdBusy(v) { adBusy = v; }
-let lastInterstitial = Date.now();
+// Пауза между межстраничными роликами. Яндекс требует минимум 60 секунд, берём с запасом.
+const INTERSTITIAL_GAP = 75000;
+// Пауза после НЕсостоявшегося показа (нет заполнения, оффлайн). Ждать полные 75 секунд из-за
+// рекламы, которой не было, незачем, но и дёргать SDK на каждой смерти не стоит.
+const INTERSTITIAL_RETRY = 20000;
+// Одна метка на всю рекламу: отсчёт идёт от ЛЮБОГО показанного ролика, включая rewarded из
+// магазина и меню. Иначе связка «посмотрел ролик за чекушки → вышел → умер» выдавала
+// межстраничную сразу поверх только что закрытой награды.
+let nextInterstitialAt = Date.now() + INTERSTITIAL_GAP;
+export function adWasShown() { nextInterstitialAt = Date.now() + INTERSTITIAL_GAP; }
+
 export function maybeInterstitial(then) {
   const next = typeof then === 'function' ? then : () => {};
   const y = Sdk.ysdk;
-  if (!y || !y.adv || adBusy || Date.now() - lastInterstitial < 75000) { next(); return; }
-  lastInterstitial = Date.now(); adBusy = true; let done = false, opened = false;
-  const finish = () => { if (done) return; done = true; adBusy = false; Sound.resumeAll(); next(); };
-  const guard = setTimeout(() => { if (!opened) finish(); }, 5000);
+  if (!y || !y.adv || adBusy || Date.now() < nextInterstitialAt) { next(); return; }
+  adBusy = true; let done = false, opened = false;
+  // shown приходит из onClose(wasShown). Раньше кулдаун ставился ДО показа, поэтому
+  // несостоявшийся ролик съедал полторы минуты честного показа.
+  const finish = shown => {
+    if (done) return; done = true; adBusy = false;
+    nextInterstitialAt = Date.now() + (shown ? INTERSTITIAL_GAP : INTERSTITIAL_RETRY);
+    Sound.resumeAll(); next();
+  };
+  const guard = setTimeout(() => { if (!opened) finish(false); }, 5000);
   try {
     y.adv.showFullscreenAdv({ callbacks: {
       onOpen: () => { opened = true; clearTimeout(guard); Sound.pauseAll(); },
-      onClose: () => { clearTimeout(guard); finish(); }, onError: () => { clearTimeout(guard); finish(); }, onOffline: () => { clearTimeout(guard); finish(); }
+      // wasShown может не прийти вовсе — тогда считаем, что показ был (строгое !== false).
+      onClose: wasShown => { clearTimeout(guard); finish(wasShown !== false); },
+      onError: () => { clearTimeout(guard); finish(false); }, onOffline: () => { clearTimeout(guard); finish(false); }
     }});
-  } catch (e) { clearTimeout(guard); finish(); }
+  } catch (e) { clearTimeout(guard); finish(false); }
 }
 export function showRewarded(onReward, onFail) {
   const y = Sdk.ysdk;
@@ -195,7 +223,8 @@ export function showRewarded(onReward, onFail) {
   const finish = () => { if (done) return; done = true; adBusy = false; Sound.resumeAll(); got ? onReward() : onFail(); };
   try {
     y.adv.showRewardedVideo({ callbacks: {
-      onOpen: () => Sound.pauseAll(), onRewarded: () => { got = true; }, onClose: finish, onError: finish
+      // adWasShown именно в onOpen: отодвигаем межстраничную только когда ролик реально открылся.
+      onOpen: () => { adWasShown(); Sound.pauseAll(); }, onRewarded: () => { got = true; }, onClose: finish, onError: finish
     }});
   } catch (e) { finish(); }
 }
