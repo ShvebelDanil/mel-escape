@@ -32,7 +32,7 @@ const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
 const PET_VOICE_MIN = 8, PET_VOICE_MAX = 14; // разброс паузы между репликами питомца на бегу
 const FLIP_K = 0.78; // доля полёта, за которую проходит оборот: заметно короче — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
-const REVIVE_MAX = 3; // сколько раз за один забег можно воскреснуть за чекушки
+const REVIVE_MAX = 3; // сколько раз за один забег можно воскреснуть за пузырики
 const REVIVE_COST_BASE = 100, REVIVE_COST_STEP = 100; // цена растёт на STEP за каждое воскрешение, сбрасывается в resetRun()
 const reviveCost = () => REVIVE_COST_BASE + G.reviveCount * REVIVE_COST_STEP;
 
@@ -133,7 +133,7 @@ function caught() {
 }
 
 // Мост между забегом и quests.js: отдаёт ещё не записанный в сейв прогресс текущего забега
-// и сразу проверяет задания. Дёргается на смене метра и на сборе чекушки — временных
+// и сразу проверяет задания. Дёргается на смене метра и на сборе пузырика — временных
 // объектов не создаёт, тяжёлая работа внутри check() идёт только в момент выполнения задания.
 function syncQuests() { QST.setLive(Math.floor(G.dist) - G.bankedDist, G.bottles - G.bankedBottles); return QST.check(); }
 
@@ -296,8 +296,8 @@ function showOverScreen() {
     if (U.UI.reviveBtn) U.UI.reviveBtn.classList.toggle('locked', U.save.currency < reviveCost());
   }
 }
-// Воскрешение за чекушки: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
-// сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, чекушки И
+// Воскрешение за пузырики: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
+// сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, пузырики И
 // паверапы — иначе игрок может ожить внутри объекта, который сам не убивает, но выглядит багом),
 // чтобы не влететь в то, от чего он только что умер, и короткая неуязвимость на случай, если рядом ещё что-то есть.
 function revive() {
@@ -434,7 +434,7 @@ function loop(t) {
       if (player.y <= player.groundY && player.vy < 0) { player.y = player.groundY; player.vy = 0; player.grounded = true; player.squash = 0.18; U.Sound.land(); ENT.burst(player.x, player.groundY + 0.08, player.z, '#c9c2b4', 3, 1.4); }
     } else { player.y = player.groundY; player.grounded = true; }
     if (player.invuln > 0) player.invuln -= dt; if (granny.closeT > 0) { granny.closeT -= dt; if (granny.closeT <= 0) granny.targetZOff = -9.2; }
-    // Паверапы до сбора чекушек: магнит успевает подтянуть их на этом же кадре, а поднятый
+    // Паверапы до сбора пузыриков: магнит успевает подтянуть их на этом же кадре, а поднятый
     // пикап начинает действовать сразу, не ожидая следующего.
     const got = PWR.update(dt, player.x, player.y, player.z);
     if (got) { U.Sound.powerup(); ENT.burst(player.x, player.y + 1.1, player.z, got.color, 8, 2.6); G.shake = Math.max(G.shake, 0.18); }
@@ -447,7 +447,7 @@ function loop(t) {
     const reachDown = PWR.active.boots > 0 ? PWR.BOOTS_REACH : 1.2;
     for (let i = ENT.activeCoins.length - 1; i >= 0; i--) {
       const c = ENT.activeCoins[i]; if (c.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseCoin(i); continue; }
-      const dy = pcy - c.y;                                   // >0 — чекушка ниже центра игрока
+      const dy = pcy - c.y;                                   // >0 — пузырик ниже центра игрока
       if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && dy < reachDown && dy > -1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); syncQuests(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();

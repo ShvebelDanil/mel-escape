@@ -13,8 +13,8 @@ export const SKINS = [
   { id: 'schoolboy2', name: 'ШКОЛЬНИК 2.0', price: 250, desc: 'Свежая форма, зелёный галстук и рюкзак отличника.', build: melSchoolboy2 },
   { id: 'darkdrun', name: 'ТЁМНЫЙ ДРУН', price: 400, desc: 'Пуховик с ушами. Капюшон не снимает даже на уроке.', build: melDarkDrun },
   { id: 'punk', name: 'ПАНК', price: 500, desc: 'Дневник сдавать не собирается. Вообще никогда.', build: melPunk },
-  { id: 'mell', name: 'МЕЛЛ', price: 700, desc: 'Деньги с обеда депает в казик.', build: melGucci },
-  // secret: не продаётся ни за какие чекушки — выдаётся за ВСЕ выполненные задания (source/quests.js).
+  { id: 'mell', name: 'МЕЛЛ', price: 700, desc: 'Деньги с обеда сливает в игры.', build: melGucci },
+  // secret: не продаётся ни за какие пузырики — выдаётся за ВСЕ выполненные задания (source/quests.js).
   // Пока не выдан, магазин прячет имя/описание и показывает чёрный силуэт модели.
   { id: 'propeller', name: 'ПРОПЕЛЛЕР', price: 0, secret: true, desc: 'Костюм, портфель и шапка с пропеллером. Взлететь пока не получилось.', build: melPropeller }
 ];

@@ -10,9 +10,13 @@
 <!-- Скрипты подключены здесь и все с defer. defer НЕ означает «как получится»: отложенные
      классические скрипты и модули выполняются строго в порядке объявления, после разбора HTML.
      Поэтому YaGames точно существует к запуску main.js, а THREE — к его импортам. Зачем так:
-     sdk.js лежит на чужом S3 и может отвечать медленно; подключённый синхронно, он останавливал
-     разбор документа и вместе с собой тормозил three.js и всю загрузку. -->
-<script defer src="https://sdk.games.s3.yandex.net/sdk.js"></script>
+     SDK отдаётся с чужого хоста и может отвечать медленно; подключённый синхронно, он останавливал
+     разбор документа и вместе с собой тормозил three.js и всю загрузку.
+     Адрес обязан быть именно https://yandex.ru/games/sdk/v2 — это документированная точка входа.
+     Прямой адрес файла в хранилище Яндекса (стоял здесь раньше) подставлять нельзя: проверка
+     архива в консоли разработчика считает его ссылкой на внутреннее хранилище сервиса и
+     отклоняет сборку. Подробности — в aboutProject.md. -->
+<script defer src="https://yandex.ru/games/sdk/v2"></script>
 <script defer src="lib/three.min.js"></script>
 <script type="module" src="source/main.js"></script>
 <style>
@@ -122,7 +126,7 @@
   }
   /* Золотой — средняя точка градиента кнопки «Играть» (#ffe066 → #ffb400), а не его
      светлый верхний стоп: именно так кнопка читается целиком, и насыщенный тон не блёкнет
-     на бежевых стенах школы. Метры сразу отделяются цветом от белых чекушек. */
+     на бежевых стенах школы. Метры сразу отделяются цветом от белых пузыриков. */
   #score { font-size:clamp(26px,5.6vmin,54px); font-weight:900; color:#ffca33; }
   #score small { font-size:0.55em; font-weight:700; opacity:.9; }
   #bottleCount {
@@ -228,7 +232,7 @@
   }
   .cur-badge img { height:1.5em; }
   .menu-cur { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); }
-  /* Плюсик у бейджа чекушек — вход в окно «реклама за валюту» (source/adreward.js).
+  /* Плюсик у бейджа пузыриков — вход в окно «реклама за валюту» (source/adreward.js).
      Живёт внутри бейджа, поэтому показывается/прячется вместе с меню. */
   .cur-add {
     appearance:none; cursor:pointer; font-family:inherit; line-height:1;
@@ -587,7 +591,7 @@
   .qt-reward { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; white-space:nowrap; }
   .qt-reward img { height:1.1em; }
 
-  /* ===== Рулетка чекушек (мини-игра, кнопка 💵 в меню) =====
+  /* ===== Рулетка пузыриков (мини-игра, кнопка 💵 в меню) =====
      Окно шире обычной .menu-modal: три колонки (ставка/шанс — колесо — награда) в ряд на
      широком экране, стопкой на узком. Сама панель — тот же .box, что у остальных модалок
      меню, чтобы не заводить отдельную оболочку. */
@@ -818,7 +822,7 @@
 
 <!-- Menu -->
 <div id="menu" class="overlay hidden">
-  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" aria-label="Получить чекушки за рекламу"></button></div>
+  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" aria-label="Получить пузырики за рекламу"></button></div>
   <div id="menuTools">
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
@@ -865,7 +869,7 @@
   <div class="stack-panel">
     <div class="stats-box">
       <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
-      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Бутылок</div></div>
+      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Пузыриков</div></div>
     </div>
     <button class="btn hidden" id="reviveBtn">Восстать за <span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
     <button class="btn ghost" id="againBtn">▶ Ещё раз</button>
@@ -946,7 +950,7 @@
   </div>
 </div>
 
-<!-- Рулетка чекушек (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
+<!-- Рулетка пузыриков (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
 <div id="rouletteModal" class="menu-modal hidden">
   <div class="box">
     <button class="modal-close" id="rouletteClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
@@ -997,7 +1001,7 @@
   </div>
 </div>
 
-<!-- Награда за просмотр рекламы (плюсик у бейджа чекушек). Тексты, состояние
+<!-- Награда за просмотр рекламы (плюсик у бейджа пузыриков). Тексты, состояние
      (ask / wait / ok / err) и сам показ рекламы — в source/adreward.js. -->
 <div id="adRewardModal" class="menu-modal hidden" data-state="ask">
   <div class="box" style="align-items:center; text-align:center;">

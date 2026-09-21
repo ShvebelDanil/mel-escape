@@ -123,12 +123,12 @@ function action() {
     return;
   }
   if (U.save.currency < s.price) {
-    showModal('err', 'НЕДОСТАТОЧНО ЧЕКУШЕК!', 'Для покупки ' + noun + ' нужно ещё ' + (s.price - U.save.currency) + ' чекушек.', 'ПОНЯТНО');
+    showModal('err', 'НЕДОСТАТОЧНО ПУЗЫРИКОВ!', 'Для покупки ' + noun + ' нужно ещё ' + (s.price - U.save.currency) + ' пузыриков.', 'ПОНЯТНО');
     U.Sound.denied();
     return;
   }
   if (c.buy(s.id)) {
-    // Куплено за чекушки — недосмотренные ролики за эту же вещь больше не нужны.
+    // Куплено за пузырики — недосмотренные ролики за эту же вещь больше не нужны.
     delete U.save.adProgress[adKey(mode, s.id)];
     U.persistSave();
     c.select(s.id);

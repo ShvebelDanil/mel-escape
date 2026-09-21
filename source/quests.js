@@ -8,13 +8,13 @@ import * as SK from './skins.js';
 //   icon     — id символа в SVG-спрайте (<symbol> в начале <body> index.html);
 //   name     — заголовок карточки;
 //   goal     — цель;
-//   reward   — награда в чекушках (save.currency — единственная валюта игры);
+//   reward   — награда в пузыриках (save.currency — единственная валюта игры);
 //   progress — текущее значение; считается из уже существующих показателей сейва,
 //              плюс «живая» прибавка текущего забега (liveDist/liveBottles), чтобы
 //              задание закрывалось прямо на бегу, а не только после смерти.
 export const QUESTS = [
   { id: 'dist10k',    icon: 'ic-flag',   name: 'Пробеги 10000 метров',      goal: 10000, reward: 300, progress: () => U.save.totalDist + liveDist },
-  { id: 'bottles300', icon: 'ic-bottle', name: 'Собери 300 чекушек',        goal: 300,   reward: 200, progress: () => U.save.bottles + liveBottles },
+  { id: 'bottles300', icon: 'ic-bottle', name: 'Собери 300 пузыриков',        goal: 300,   reward: 200, progress: () => U.save.bottles + liveBottles },
   { id: 'runs10',     icon: 'ic-play',   name: 'Сделай 10 забегов',         goal: 10,    reward: 150, progress: () => U.save.runs },
   { id: 'skin1',      icon: 'ic-shirt',  name: 'Купи скин',                 goal: 1,     reward: 100, progress: () => U.save.ownedSkins.length },
   { id: 'pet1',       icon: 'ic-paw',    name: 'Заведи питомца',            goal: 1,     reward: 100, progress: () => U.save.ownedPets.length },
@@ -49,7 +49,7 @@ function grantSecret() {
   return !!s && allDone() && SK.grant(s.id);
 }
 
-// Проверка выполнения. Вызывается из игрового цикла (смена метра, сбор чекушки),
+// Проверка выполнения. Вызывается из игрового цикла (смена метра, сбор пузырика),
 // поэтому внутри — обычный цикл по индексу без временных объектов и без for..of:
 // аллокаций на кадр быть не должно, тяжёлое (persist/DOM) выполняется только в момент
 // реального выполнения задания. Возвращает число закрытых за вызов заданий.
@@ -85,7 +85,7 @@ function toast(q) {
   pushToast(box, el);
 }
 
-// Тост об открытии секретного скина: блока награды нет — приз выдаётся не чекушками.
+// Тост об открытии секретного скина: блока награды нет — приз выдаётся не пузыриками.
 function secretToast() {
   const box = U.UI.questToasts; if (!box) return;
   const el = document.createElement('div');

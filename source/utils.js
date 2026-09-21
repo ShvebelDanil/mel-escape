@@ -103,8 +103,20 @@ function syncVolRow(id, v) {
 }
 
 let cloudTimer = null, cloudPending = false;
+// Снимок последнего отправленного в облако состояния. Яндекс отклоняет setData с данными,
+// совпадающими с уже лежащими в облаке («The data does not differ from the previous ones»),
+// но запрос при этом всё равно уходит и тратит лимит обращений, а консоль забивается
+// десятками одинаковых ошибок. Поэтому сверяем payload сами и повтор просто не шлём.
+let lastCloudJson = '';
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress }, false)).catch(() => {});
+  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress };
+  const json = JSON.stringify(data);
+  if (json === lastCloudJson) return;
+  // Метку ставим ДО отправки и при ошибке не откатываем: если Яндекс ответил «данные не
+  // отличаются», в облаке они уже есть, а при сетевом сбое потеря не страшна — в облако
+  // уходит полный снимок, поэтому следующее же изменение перешлёт состояние целиком.
+  lastCloudJson = json;
+  Sdk.getPlayer().then(p => p.setData(data, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -189,7 +201,7 @@ const INTERSTITIAL_GAP = 75000;
 // рекламы, которой не было, незачем, но и дёргать SDK на каждой смерти не стоит.
 const INTERSTITIAL_RETRY = 20000;
 // Одна метка на всю рекламу: отсчёт идёт от ЛЮБОГО показанного ролика, включая rewarded из
-// магазина и меню. Иначе связка «посмотрел ролик за чекушки → вышел → умер» выдавала
+// магазина и меню. Иначе связка «посмотрел ролик за пузырики → вышел → умер» выдавала
 // межстраничную сразу поверх только что закрытой награды.
 let nextInterstitialAt = Date.now() + INTERSTITIAL_GAP;
 export function adWasShown() { nextInterstitialAt = Date.now() + INTERSTITIAL_GAP; }
@@ -302,13 +314,13 @@ export const Sound = {
   land() { if (this.sfx('action')) return; this.noise(0.12, 0.1, 500); },
   roll() { if (this.sfx('action')) return; this.noise(0.28, 0.14, 700); },
   flip() { if (this.sfx('action')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
-  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с чекушкой.
+  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с пузыриком.
   // Пока файла assets/sounds/book.mp3 нет — играет шорох страниц (синтез).
   book() { if (this.sfx('book')) return; this.noise(0.18, 0.12, 2600); this.tone(520, 380, 0.14, 'triangle', 0.07); },
   coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
   // Поднятый паверап (source/powerups.js). Свой ключ банка — assets/sounds/powerup.mp3;
-  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычная чекушка.
+  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычный пузырик.
   powerup() {
     if (this.sfx('powerup')) return; const t = this.ctx ? this.sfxTime() : 0;
     this.tone(660, 660, 0.09, 'square', 0.13, t); this.tone(880, 880, 0.09, 'square', 0.13, t + 0.07);
@@ -335,7 +347,7 @@ export const Sound = {
   },
   // Fallback — СВОЙ синтез, а не делегирование в stumble(): та теперь сама проверяет
   // общий банк-ключ 'hit', и если у тебя уже есть hit.mp3 (для столкновений), но ещё нет
-  // ui_denied.mp3, магазин при нехватке чекушек играл бы чужой звук столкновения.
+  // ui_denied.mp3, магазин при нехватке пузыриков играл бы чужой звук столкновения.
   denied() { if (this.sfx('ui_denied')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   // Успешная покупка в магазине. Своего синтеза нет — за неимением purchase.mp3 звучит
   // звук монеты (coin.mp3, а нет и его — синтезированный «дзынь»), это уместный дефолт.

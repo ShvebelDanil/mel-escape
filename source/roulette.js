@@ -2,7 +2,7 @@ import * as U from './utils.js';
 import * as SHOP from './shop.js';
 import * as QST from './quests.js';
 
-// Рулетка чекушек — мини-игра из главного меню (кнопка 💵 → #minigameBtn).
+// Рулетка пузыриков — мини-игра из главного меню (кнопка 💵 → #minigameBtn).
 // Экономика — обе константы только здесь: HOUSE_EDGE — средний возврат игроку (казино
 // забирает разницу), множитель выигрыша = HOUSE_EDGE*100/шанс%, то есть чем ниже выбранный
 // шанс, тем выше выплата (классика гэмблинг-рулеток, подтверждено пользователем).
@@ -104,7 +104,7 @@ function updateChanceUI() {
 }
 function updateHint() {
   const el = U.UI.rouletteHint; if (!el) return;
-  if (!afford()) { el.textContent = 'Недостаточно чекушек для ставки'; el.dataset.warn = '1'; }
+  if (!afford()) { el.textContent = 'Недостаточно пузыриков для ставки'; el.dataset.warn = '1'; }
   else { el.textContent = 'Множитель при победе: ×' + multiplier(chance).toFixed(2); el.dataset.warn = '0'; }
 }
 function setResultState(state, title, val) {

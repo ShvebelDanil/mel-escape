@@ -2,9 +2,9 @@ import * as U from './utils.js';
 import * as SHOP from './shop.js';
 import * as QST from './quests.js';
 
-// Награда за просмотр rewarded-рекламы: плюсик у бейджа чекушек в меню.
+// Награда за просмотр rewarded-рекламы: плюсик у бейджа пузыриков в меню.
 // Здесь же — единственное место настройки фичи.
-export const AD_REWARD = 100;              // чекушек за один досмотренный ролик
+export const AD_REWARD = 100;              // пузыриков за один досмотренный ролик
 export const AD_COOLDOWN_MS = 3 * 60 * 1000; // пауза между наградами, мс
 
 // lastRewardAt намеренно не пишется в сейв: кулдаун защищает от кликания подряд
@@ -41,7 +41,7 @@ function syncBtn() {
 export function open() {
   QST.closeAll();
   if (leftMs() > 0) setState('wait', 'Подожди', 'Награда за рекламу уже получена. Следующая — через ' + mmss(leftMs()) + '.', 'Ок');
-  else setState('ask', 'Бонус', 'Посмотреть рекламу за ' + AD_REWARD + ' чекушек?', 'Смотреть');
+  else setState('ask', 'Бонус', 'Посмотреть рекламу за ' + AD_REWARD + ' пузыриков?', 'Смотреть');
   U.show(U.UI.adRewardModal, true);
 }
 export function close() { if (!pending) U.show(U.UI.adRewardModal, false); }
@@ -52,7 +52,7 @@ function grant() {
   SHOP.refreshCurrency();  // бейджи меню и магазина
   lastRewardAt = Date.now();
   syncBtn();
-  setState('ok', 'Готово', '+' + AD_REWARD + ' чекушек зачислено!', 'Отлично');
+  setState('ok', 'Готово', '+' + AD_REWARD + ' пузыриков зачислено!', 'Отлично');
 }
 
 function watch() {
