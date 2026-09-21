@@ -1,5 +1,6 @@
 import * as U from './utils.js';
 import * as ENT from './entities.js';
+import * as PWR from './powerups.js';
 import { G, player } from './main.js';
 
 // ─── физика действий ─────────────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ const TIER_DIFF = [0, 0.13, 0.32];
 const BLOCKERS = ['locker', 'door', 'tower', 'shelf', 'deskStack', 'chairTower', 'standBoard', 'cooler'];
 const HOPPERS = ['desk', 'desk', 'cart', 'chairPile', 'vault', 'trayCart', 'lockerDown'];
 const LOWS = ['sign', 'books', 'bags', 'bucket', 'pipe'];   // низкие: клиренс большой, годятся для частых прыжков
-const SLIDERS = ['banner', 'board', 'ladder'];
+const SLIDERS = ['banner', 'board', 'ladder', 'bookRack'];
 // Типы, которые можно ставить ПРЯМО на маршрут: перепрыгиваются с большим запасом по времени.
 const ONROUTE = ['books', 'bags', 'sign', 'bucket', 'pipe', 'lockerDown', 'mat'];
 const FILLERS = [
@@ -270,7 +271,7 @@ function choosePattern(prog, relax) {
 // Позиция бутылки вынесена из спавна отдельно: тот же расчёт нужен ЗАРАНЕЕ, чтобы
 // отбросить награду, которую перекрыли филлеры. Паттерн объявляет награды в build(),
 // а филлеры досыпают препятствия уже после — и про награды ничего не знают.
-const COIN_PAD_Z = ENT.COIN_PAD_Z, COIN_PAD_Y = ENT.COIN_PAD_Y;
+const COIN_PAD_Z = ENT.COIN_PAD_Z, COIN_PAD_UP = ENT.COIN_PAD_UP, COIN_PAD_DOWN = ENT.COIN_PAD_DOWN;
 let _cy = 0, _ct = 0;                         // позиция очередной бутылки: высота и время от начала паттерна
 function rewCount(r, v) {
   if (r.k === 'arc') return 5;
@@ -282,25 +283,73 @@ function rewCoin(r, i, n, v) {
   else if (r.k === 'low') { _ct = r.time + (i - 1) * 0.2; _cy = 0.6; }
   else { _ct = r.t0 + (r.t1 - r.t0) * i / (n - 1); _cy = r.y; }
 }
-// Полосы разнесены на 2.3 м, самое широкое препятствие — 0.86 м, поэтому по X достаточно
-// сравнить номер полосы. На крыше парты бутылка стоять может, внутри парты — нет.
-function coinFree(r, v) {
-  for (let i = 0; i < nObs; i++) {
-    const o = obs[i]; if (o.l !== r.l) continue;
-    const d = ENT.OB_DEFS[o.t];
-    if (Math.abs(o.time - _ct) * v >= d.hz + COIN_PAD_Z) continue;
-    if (_cy + COIN_PAD_Y > d.y0 && _cy - COIN_PAD_Y < d.y1) return false;
+// Проверка идёт по УЖЕ ОТСПАВНЕННЫМ препятствиям (ENT.activeObstacles), а не по массиву obs
+// текущего паттерна, и это принципиально: время бутылки бывает отрицательным (первая бутылка
+// арки прыжка стоит на -JUMP_T/2, то есть на 27 м/с — на 8.7 м раньше начала паттерна, а зазор
+// между паттернами всего MIN_GAP_M = 4 м), и такая бутылка уезжает в зону ПРЕДЫДУЩЕГО паттерна.
+// Его препятствия из obs уже стёрты, а чистка в entities.js:spawnObstacle() ловит только обратный
+// случай — когда препятствие приходит после бутылки. Из-за этого бутылки иногда вставали внутрь
+// объекта на стыке паттернов. Правило здесь то же, что в той чистке, — один закон на оба стыка.
+// Вызывать только ПОСЛЕ спавна препятствий паттерна (шаг 4 в fillSpawns), иначе они не учтутся.
+// Полосы разнесены на 2.3 м, самый широкий объект — 1.02 м (баннер) при полуширине бутылки 0.31,
+// поэтому по X достаточно сравнить полосу. На крыше парты бутылка стоять может, внутри парты — нет.
+function coinFree(r, z0, v) {
+  const cx = U.LANES[r.l], cz = z0 + _ct * v;
+  for (let i = 0; i < ENT.activeObstacles.length; i++) {
+    const o = ENT.activeObstacles[i];
+    if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - cz) >= o.hz + COIN_PAD_Z) continue;
+    if (_cy + COIN_PAD_UP > o.y0 && _cy - COIN_PAD_DOWN < o.y1) return false;
   }
   return true;
 }
-function rewBlocked(r, v) {
+function rewBlocked(r, v, z0) {
   const n = rewCount(r, v);
-  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (!coinFree(r, v)) return true; }
+  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (!coinFree(r, z0, v)) return true; }
   return false;
 }
+// Возвращает, сколько бутылок реально встало: если награду выбило препятствиями целиком,
+// кулдаун сбрасывать нельзя — иначе на трассе появляется участок вообще без бутылок.
+// Награда всегда ставится ОДИНОЧНЫМИ чекушками по центру ряда. Удвоение MAX WIN сюда не лезет
+// нарочно: спавн идёт на 170 м вперёд игрока, и бафф опаздывал бы на эти метры в обе стороны.
+// Раздвоением занимается powerups.js:updateDouble уже на подлёте игрока.
 function spawnReward(r, z0, v) {
-  const n = rewCount(r, v);
-  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (coinFree(r, v)) ENT.spawnCoin(U.LANES[r.l], _cy, z0 + _ct * v); }
+  const n = rewCount(r, v); let placed = 0;
+  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (coinFree(r, z0, v)) { ENT.spawnCoin(U.LANES[r.l], _cy, z0 + _ct * v); placed++; } }
+  return placed;
+}
+
+// ─── паверапы ────────────────────────────────────────────────────────────────────
+// Пикап ставится в СВОБОДНЫЙ РЯД РЯДОМ с маршрутом: игрок должен его заметить и свернуть.
+// Габарит для проверки места берём с запасом вокруг квада иконки (1.7 м нимба по высоте),
+// чтобы предмет не оказался внутри парты или под полотном баннера.
+const PU_HZ = 1.0, PU_Y0 = 0.45, PU_Y1 = 1.95;
+function puFree(l, t, z0, v) {
+  const cx = U.LANES[l], cz = z0 + t * v;
+  for (let i = 0; i < ENT.activeObstacles.length; i++) {
+    const o = ENT.activeObstacles[i];
+    if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - cz) >= o.hz + PU_HZ) continue;
+    if (PU_Y1 > o.y0 && PU_Y0 < o.y1) return false;
+  }
+  // Поверх награды тоже не лепим: иконка перекрыла бы чекушки и читалась бы как одна из них.
+  for (let i = 0; i < ENT.activeCoins.length; i++) {
+    const c = ENT.activeCoins[i];
+    if (Math.abs(c.x - cx) < 1.3 && Math.abs(c.z - cz) < 1.8) return false;
+  }
+  return true;
+}
+// Вызывать только ПОСЛЕ спавна препятствий и награды паттерна — иначе проверять нечего.
+// Если места не нашлось, тип остаётся «дозревшим» в powerups.js и попробует встать
+// на следующем паттерне: расписание от этого не сбивается.
+function tryPowerup(type, z0, v) {
+  const t0 = 0.35, t1 = b.len - 0.2;
+  if (t1 <= t0) return;
+  for (let k = 0; k < 8; k++) {
+    const t = U.rand(t0, t1);
+    b.routeLanes(t, busy);
+    if (busy.length !== 1) continue;            // в этот момент идёт смена полосы — «рядом» не определить
+    const l = adjLane(busy[0]);
+    if (puFree(l, t, z0, v)) { PWR.place(type, U.LANES[l], PWR.PU_Y, z0 + t * v); return; }
+  }
 }
 const gapRew = { k: 'line', l: 1, t0: 0, t1: 0, y: 0.95, must: false, time: 0 };
 
@@ -360,14 +409,21 @@ export function fillSpawns() {
     let pick = null;
     for (let i = 0; i < nRew; i++) if (rewards[i].must) { pick = rewards[i]; break; }
     if (!pick && Director.coinCd <= 0 && nRew) {
-      for (let k = 0; k < 4; k++) { const c = rewards[U.randi(0, nRew - 1)]; if (!rewBlocked(c, v)) { pick = c; break; } }
+      for (let k = 0; k < 4; k++) { const c = rewards[U.randi(0, nRew - 1)]; if (!rewBlocked(c, v, z0)) { pick = c; break; } }
     }
-    if (pick) { spawnReward(pick, z0, v); Director.coinCd = U.rand(1.6, 3.0); }
+    if (pick) { if (spawnReward(pick, z0, v)) Director.coinCd = U.rand(1.6, 3.0); }
     else if (Director.coinCd <= 0 && gap >= 0.8) {
       gapRew.l = Director.lane; gapRew.t0 = -gap + 0.25; gapRew.t1 = -0.3;
-      spawnReward(gapRew, z0, v); Director.coinCd = U.rand(1.6, 3.0);
+      if (spawnReward(gapRew, z0, v)) Director.coinCd = U.rand(1.6, 3.0);
     }
     Director.coinCd -= gap + b.len;
+
+    // 5) паверап. Расписание живёт в powerups.js и тикает по МЕТРАМ трассы; кормим его
+    // метражом точки генерации (distAt), а не игрока — пикап встанет именно здесь.
+    // Дальше остаётся подобрать честное место: рядом с маршрутом, в свободном от препятствий ряду.
+    PWR.noteDist(distAt);
+    const pu = PWR.pendingType();
+    if (pu && Director.count >= 3) tryPowerup(pu, z0, v);
 
     G.nextZ = z0 + b.len * v;
     Director.tAir = _air - b.len; Director.tRoll = _roll - b.len; Director.tLane = _lane - b.len; Director.tNeed = _need - b.len;

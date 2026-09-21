@@ -5,11 +5,17 @@ import * as LVL from './level.js';
 import * as SK from './skins.js';
 import * as PT from './pets.js';
 import * as SHOP from './shop.js';
+import * as QST from './quests.js';
 import * as AUD from './audio.js';
 import * as TEX from './textures.js';
+import * as ADR from './adreward.js';
+import * as PWR from './powerups.js';
+import * as RLT from './roulette.js';
 
 const COMBO_WINDOW = 1.3;
-export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveUsed: false, combo: 0, comboT: 0 };
+// bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
+// записываются в сейв ровно один раз, даже если caught() случился дважды (смерть → ревайв → смерть).
+export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, bankedDist: 0, runBanked: false, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveCount: 0, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spinDir: 0, spinT: 0, spinDur: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, id: '', x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0, voiceT: 0 };
@@ -24,22 +30,32 @@ const PET_JUMP_T = 2 * U.JUMP_V / U.GRAVITY; // время полёта прыж
 const PET_JUMP_APEX = (U.JUMP_V * U.JUMP_V) / (2 * U.GRAVITY); // макс. высота прыжка питомца
 const TAU = Math.PI * 2, HALF_PI = Math.PI / 2;
 const PET_VOICE_MIN = 8, PET_VOICE_MAX = 14; // разброс паузы между репликами питомца на бегу
-const FLIP_TIME = PET_JUMP_T * 0.78; // оборот заметно короче полёта — успеваем раскрыться и приземлиться в ровную стойку
+const FLIP_K = 0.78; // доля полёта, за которую проходит оборот: заметно короче — успеваем раскрыться и приземлиться в ровную стойку
 const FLIP_CHANCE = 0.5; // сальто вперёд + сальто назад суммарно равны обычному прыжку (25% / 25% / 50%)
+const REVIVE_MAX = 3; // сколько раз за один забег можно воскреснуть за чекушки
+const REVIVE_COST_BASE = 100, REVIVE_COST_STEP = 100; // цена растёт на STEP за каждое воскрешение, сбрасывается в resetRun()
+const reviveCost = () => REVIVE_COST_BASE + G.reviveCount * REVIVE_COST_STEP;
 
 function move(dir) {
   if (G.state !== 'run') return;
   const nl = U.clamp(player.lane + dir, 0, 2);
   if (nl !== player.lane) { player.lane = nl; U.Sound.lane(); }
 }
+// Сила прыжка не константа: сапоги-бурмалды (source/powerups.js) поднимают её так, что
+// apex вырастает с 1.45 до ~3.1 м. Время полёта и окно трюка считаются от ТЕКУЩЕЙ силы,
+// иначе сальто крутилось бы по физике обычного прыжка.
+function jumpV() { return PWR.active.boots > 0 ? PWR.BOOTS_JUMP_V : U.JUMP_V; }
+const jumpT = jv => 2 * jv / U.GRAVITY;
 function jump() {
   if (G.state !== 'run' || !player.grounded) return;
-  player.vy = U.JUMP_V; player.grounded = false; player.rolling = 0;
-  const dir = trickDir();
+  const jv = jumpV(), jt = jumpT(jv);
+  player.vy = jv; player.grounded = false; player.rolling = 0;
+  const dir = trickDir(jv, jt);
   // flip() и jump() делят один и тот же пул семплов ('action') — раньше вызывались
   // ОБА на трюковый прыжок и звук слышался дважды подряд. Теперь ровно один вызов на прыжок.
-  if (dir) { startSpin(dir, FLIP_TIME); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
+  if (dir) { startSpin(dir, jt * FLIP_K); U.Sound.flip(); ENT.burst(player.x, player.y + 0.9, player.z, '#ffe9a8', 4, 2); }
   else { if (player.spinDir) { player.spinDir = 0; player.node.pivot.rotation.x = 0; } U.Sound.jump(); }
+  if (jv > U.JUMP_V) ENT.burst(player.x, player.groundY + 0.08, player.z, '#c5e1a5', 5, 2.6);   // пыль от толчка сапог
 }
 function roll() {
   if (G.state !== 'run') return;
@@ -49,22 +65,22 @@ function roll() {
 // Особый прыжок доступен только «осмысленному» прыжку: с платформы (парта, тележка)
 // или через препятствие в своём ряду, до которого игрок реально долетит.
 // Геометрия берётся из уже существующих полей препятствия (y0/y1 из OB_DEFS), отдельной таблицы типов нет.
-function trickJump() {
+function trickJump(jv, jt) {
   if (player.groundY > 0.01) return true; // спрыгиваем с парты/тележки
   for (const o of ENT.activeObstacles) {
     const dz = o.z - player.z;
     if (dz <= 0 || o.y0 > 0.01) continue; // позади или висит над головой (это подкат, а не перепрыгивание)
     if (nearestLane(o.x) !== player.lane) continue;
     const t = dz / Math.max(1, G.speed); // момент, когда игрок поравняется с препятствием
-    if (t > PET_JUMP_T) continue; // за этот прыжок не долетит
-    const h = U.JUMP_V * t - 0.5 * U.GRAVITY * t * t; // высота в этот момент — та же физика, что и в loop()
+    if (t > jt) continue; // за этот прыжок не долетит
+    const h = jv * t - 0.5 * U.GRAVITY * t * t; // высота в этот момент — та же физика, что и в loop()
     if (h >= o.y1 - U.PLATFORM_TOL) return true; // траектория реально проходит поверх препятствия
   }
   return false;
 }
 // 0 — обычный прыжок, 1 — сальто вперёд, -1 — сальто назад.
-function trickDir() {
-  if (!trickJump()) return 0;
+function trickDir(jv, jt) {
+  if (!trickJump(jv, jt)) return 0;
   const r = Math.random();
   return r < FLIP_CHANCE * 0.5 ? 1 : (r < FLIP_CHANCE ? -1 : 0);
 }
@@ -74,8 +90,14 @@ function nearestLane(x) { let best = 0, bd = 1e9; for (let i = 0; i < 3; i++) { 
 const hitsXZ = o => Math.abs(player.z - o.z) <= o.hz + U.HIT_Z && Math.abs(player.x - o.x) <= o.hw + U.HIT_W;
 function updateCollisions() {
   const rolling = player.rolling > 0; const py1 = player.y + (rolling ? 0.80 : 1.86);
+  // Сапоги забрасывают игрока на 3.1 м — прямо в подкатные препятствия, которые висят в воздухе
+  // (баннер 1.05–2.95, доска, лестница). Пока он в прыжке, такие препятствия его не трогают:
+  // иначе собственный бафф убивал бы игрока там, где раньше он спокойно подкатывался.
+  // На земле подкат работает как прежде.
+  const airSafe = PWR.active.boots > 0 && !player.grounded;
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) {
     const o = ENT.activeObstacles[i]; if (o.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseObstacle(i); continue; }
+    if (airSafe && o.y0 > 0.01) continue;
     if (!hitsXZ(o)) continue;
     if (player.y >= o.y1 - U.PLATFORM_TOL) continue;
     if (py1 <= o.y0 + 0.04) continue;
@@ -104,16 +126,26 @@ function caught() {
   U.Sdk.gameplayStop(); const m = Math.floor(G.dist); const isRecord = m > U.save.best;
   if (isRecord) U.save.best = m;
   const gained = G.bottles - G.bankedBottles; U.save.bottles += gained; U.save.currency += gained; G.bankedBottles = G.bottles;
+  U.save.totalDist += m - G.bankedDist; G.bankedDist = m;
+  if (!G.runBanked) { G.runBanked = true; U.save.runs++; }
   U.persistSave(); if (U.UI.over) U.UI.over.dataset.record = isRecord ? '1' : '0';
+  syncQuests(); // прогресс уже в сейве — live-прибавка обнуляется тут же
 }
 
+// Мост между забегом и quests.js: отдаёт ещё не записанный в сейв прогресс текущего забега
+// и сразу проверяет задания. Дёргается на смене метра и на сборе чекушки — временных
+// объектов не создаёт, тяжёлая работа внутри check() идёт только в момент выполнения задания.
+function syncQuests() { QST.setLive(Math.floor(G.dist) - G.bankedDist, G.bottles - G.bankedBottles); return QST.check(); }
+
 function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; SHOP.refreshCurrency(); }
-function showMenu() { setupMenuScene(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); U.Sound.setMusic('menu'); }
-function openShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open(); }
-function openPetsShop() { if (G.state !== 'menu') return; G.state = 'shop'; SHOP.open('pets'); }
+// QST.check() перед updateMenuStats(): покупка скина/питомца могла закрыть задание,
+// награда должна попасть в плашку валюты тем же кадром, что и само меню.
+function showMenu() { setupMenuScene(); QST.closeAll(); QST.check(); U.screens('menu'); updateMenuStats(); U.Sdk.gameplayStop(); U.Sound.setMusic('menu'); }
+function openShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open(); }
+function openPetsShop() { if (G.state !== 'menu') return; QST.closeAll(); G.state = 'shop'; SHOP.open('pets'); }
 function exitShop() { if (G.state !== 'shop') return; SHOP.close(); showMenu(); }
-function applyPlayerSkin(id) {
-  const next = ENT.buildMel(id); if (next === player.node) return;
+function applyPlayerSkin(id, dark) {
+  const next = ENT.buildMel(id, dark); if (next === player.node) return;
   const old = player.node;
   if (old) { GFX.scene.remove(old.root); next.diary.visible = old.diary.visible; }
   player.node = next; GFX.scene.add(next.root);
@@ -201,9 +233,10 @@ function resetRun() {
   segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
   player.lane = 1; player.x = 0; player.y = 0; player.vy = 0; player.z = 0; player.groundY = 0; player.grounded = true; player.rolling = 0; player.invuln = 0; player.squash = 0;
   resetPose(); player.node.inner.scale.set(1, 1, 1); player.node.inner.position.y = -0.92;
-  G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.nextZ = 42; G.reviveUsed = false; G.overShown = false; G.shake = 0;
+  G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveCount = 0; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
   G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); GFX.resetResolution();
+  PWR.reset();   // баффы и пикапы живут только внутри забега
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
 }
@@ -218,7 +251,7 @@ function setupMenuScene() {
   }
   Object.assign(intro, { t: 0, grab: false, alert: false, hop: false, turn: false, faceY: Math.PI });
 }
-function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; U.screens('skipIntroBtn'); U.Sound.ensure(); U.Sound.setMusic('run'); }
+function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; QST.closeAll(); U.screens('skipIntroBtn'); U.Sound.ensure(); U.Sound.setMusic('run'); }
 function beginRun() {
   G.state = 'run'; intro.runStartZ = player.z; G.camBlend = 1; G.speed = U.BASE_SPEED; granny.zOff = granny.node.root.position.z - player.z; granny.targetZOff = -9.2;
   syncPetBehindPlayer();
@@ -226,7 +259,7 @@ function beginRun() {
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
+function quickRestart() { QST.closeAll(); resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -234,7 +267,7 @@ function updateIntro(dt) {
     n.legL.rotation.x = s * 0.55; n.legR.rotation.x = -s * 0.55; n.armL.rotation.x = -s * 0.4; n.armR.rotation.x = U.damp(n.armR.rotation.x, -0.7, 4, dt); n.inner.position.y = -0.92 + Math.abs(Math.cos(player.runPhase)) * 0.03;
   } else if (t < 2.0) {
     n.legL.rotation.x = U.damp(n.legL.rotation.x, 0, 8, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, t < 1.45 ? -1.55 : -2.4, 6, dt);
-    if (!intro.grab && t >= 1.3) { intro.grab = true; diaryTaken(true); U.Sound.coin(); }
+    if (!intro.grab && t >= 1.3) { intro.grab = true; diaryTaken(true); U.Sound.book(); }
   } else {
     if (!intro.turn) { intro.turn = true; intro.faceY = 0; }
     if (!intro.hop && player.grounded) { player.vy = 4.4; player.grounded = false; intro.hop = true; U.Sound.jump(); }
@@ -252,14 +285,26 @@ function updateIntro(dt) {
 }
 let pausedW = -1, pausedH = -1; // размер холста на последнем отрисованном кадре паузы (см. loop)
 function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; pausedW = -1; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
-function resumeRun() { if (G.state !== 'paused') return; G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
+function resumeRun() { if (G.state !== 'paused') return; QST.closeAll(); G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
 function showOverScreen() {
   G.overShown = true; const m = Math.floor(G.dist);
   if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles;
-  U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over'); U.show(U.UI.reviveBtn, !G.reviveUsed && !!U.Sdk.ysdk);
+  U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over');
+  const canRevive = G.reviveCount < REVIVE_MAX;
+  U.show(U.UI.reviveBtn, canRevive);
+  if (canRevive) {
+    if (U.UI.reviveCost) U.UI.reviveCost.textContent = reviveCost();
+    if (U.UI.reviveBtn) U.UI.reviveBtn.classList.toggle('locked', U.save.currency < reviveCost());
+  }
 }
+// Воскрешение за чекушки: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
+// сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, чекушки И
+// паверапы — иначе игрок может ожить внутри объекта, который сам не убивает, но выглядит багом),
+// чтобы не влететь в то, от чего он только что умер, и короткая неуязвимость на случай, если рядом ещё что-то есть.
 function revive() {
-  G.reviveUsed = true; U.screens('hud'); G.state = 'run'; ENT.clearObstacles(player.z - 6, player.z + Math.max(50, G.speed * 2.6));
+  G.reviveCount++; U.screens('hud'); G.state = 'run';
+  const z0 = player.z - 6, z1 = player.z + Math.max(50, G.speed * 2.6);
+  ENT.clearObstacles(z0, z1); ENT.clearCoins(z0, z1); PWR.clearRange(z0, z1);
   player.invuln = 2.8; player.rolling = 0; resetPose(); G.speed = Math.max(U.BASE_SPEED, G.speed * 0.7);
   granny.closeT = 0; granny.catchMode = false; granny.targetZOff = -9.2; G.shake = 0.3; U.Sdk.gameplayStart();
   pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0;
@@ -269,7 +314,7 @@ let lastScore = -1, scoreNum = null;
 function updateScoreHud(force) {
   const m = Math.floor(G.dist);
   if (m === lastScore && !force) return;
-  lastScore = m; if (!U.UI.score) return;
+  lastScore = m; syncQuests(); if (!U.UI.score) return;
   // раньше здесь был innerHTML — браузер пересобирал разметку ~20 раз в секунду; теперь меняется только текст
   if (!scoreNum) { U.UI.score.innerHTML = '<span></span> <small>м</small>'; scoreNum = U.UI.score.firstChild; }
   scoreNum.textContent = m;
@@ -378,10 +423,21 @@ function loop(t) {
       if (player.y <= player.groundY && player.vy < 0) { player.y = player.groundY; player.vy = 0; player.grounded = true; player.squash = 0.18; U.Sound.land(); ENT.burst(player.x, player.groundY + 0.08, player.z, '#c9c2b4', 3, 1.4); }
     } else { player.y = player.groundY; player.grounded = true; }
     if (player.invuln > 0) player.invuln -= dt; if (granny.closeT > 0) { granny.closeT -= dt; if (granny.closeT <= 0) granny.targetZOff = -9.2; }
+    // Паверапы до сбора чекушек: магнит успевает подтянуть их на этом же кадре, а поднятый
+    // пикап начинает действовать сразу, не ожидая следующего.
+    const got = PWR.update(dt, player.x, player.y, player.z);
+    if (got) { U.Sound.powerup(); ENT.burst(player.x, player.y + 1.1, player.z, got.color, 8, 2.6); G.shake = Math.max(G.shake, 0.18); }
+    PWR.updateDouble(dt, player.z);   // раздвоение раньше магнита: подтягивать уже есть что
+    PWR.updateMagnet(dt, player.x, player.y, player.z);
+    PWR.updateHud(dt);
     const pcy = player.y + 0.95;
+    // В сапогах Мэл перелетает ряды выше обычного окна сбора, поэтому на время баффа окно
+    // растягивается ВНИЗ (PWR.BOOTS_REACH): всё, что оказалось под игроком, подбирается на лету.
+    const reachDown = PWR.active.boots > 0 ? PWR.BOOTS_REACH : 1.2;
     for (let i = ENT.activeCoins.length - 1; i >= 0; i--) {
       const c = ENT.activeCoins[i]; if (c.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseCoin(i); continue; }
-      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && Math.abs(pcy - c.y) < 1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); }
+      const dy = pcy - c.y;                                   // >0 — чекушка ниже центра игрока
+      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && dy < reachDown && dy > -1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); syncQuests(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();
     for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg); } }
@@ -398,6 +454,7 @@ function loop(t) {
   animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
+  PWR.faceCamera();         // по той же причине здесь, а не в PWR.update()
   GFX.renderer.render(GFX.scene, GFX.camera);
   if (G.state === 'run') GFX.tuneResolution(dt); // мерим только забег: в меню первые кадры дороже из-за компиляции шейдеров
 }
@@ -411,8 +468,10 @@ function bindInput() {
     switch (c) {
       case 'ArrowLeft': case 'KeyA': move(1); break; case 'ArrowRight': case 'KeyD': move(-1); break;
       case 'ArrowUp': case 'KeyW': case 'Space': jump(); break; case 'ArrowDown': case 'KeyS': roll(); break;
-      case 'Escape': case 'KeyP': if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); else if (G.state === 'shop') exitShop(); break;
-      case 'Enter': if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); break;
+      // Открытая модалка меню (настройки/задания/заглушка) перехватывает Escape и блокирует Enter:
+      // кликами она недоступна (её фон перекрывает меню), а вот с клавиатуры забег стартовал бы прямо под ней.
+      case 'Escape': case 'KeyP': if (QST.modalOpen()) QST.closeAll(); else if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); else if (G.state === 'shop') exitShop(); break;
+      case 'Enter': if (QST.modalOpen()) break; if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); break;
     }
   });
   const gameEl = U.UI.game;
@@ -430,19 +489,61 @@ function bindInput() {
     if (document.hidden) { if (G.state === 'intro') skipIntro(); if (G.state === 'run') pauseRun(); U.Sound.pauseAll(); }
     else if (G.state !== 'paused') U.Sound.resumeAll();
   });
+  // Свёрнутое окно или переключение в другую программу/окно браузера visibilitychange НЕ ловит:
+  // вкладка формально остаётся видимой (document.hidden === false), игра продолжала бежать без игрока.
+  // Ловим потерю фокуса окна и ведём себя так же, как при уходе со вкладки.
+  // Во время рекламы фокус забирает её iframe — это не уход игрока, звуком и паузой там рулит SDK.
+  window.addEventListener('blur', () => {
+    if (U.adBusy) return;
+    if (G.state === 'intro') skipIntro();
+    if (G.state === 'run') pauseRun();
+    U.Sound.pauseAll();
+  });
+  window.addEventListener('focus', () => {
+    if (U.adBusy || document.hidden) return;
+    if (G.state !== 'paused') U.Sound.resumeAll();
+  });
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };
   const act = fn => () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); };
   on('playBtn', act(() => { if (G.state === 'menu') startIntro(); })); on('skipIntroBtn', act(() => { if (G.state === 'intro') skipIntro(); }));
   on('shopBtn', act(openShop));
   on('petsBtn', act(openPetsShop));
+  on('settingsBtn', act(() => QST.openSettings()));
+  on('questsBtn', act(() => QST.openQuests()));
+  on('minigameBtn', act(() => RLT.open()));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
   on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu); }));
-  on('reviveBtn', act(() => { if (G.state !== 'over' || G.reviveUsed) return; U.show(U.UI.reviveBtn, false); U.showRewarded(revive, () => { if (G.state === 'over') U.show(U.UI.reviveBtn, true); }); }));
-  const toggle = key => () => { U.save[key] = U.save[key] ? 0 : 1; U.syncToggleUI(); U.Sound.applyToggles(); U.persistSave(); U.Sound.click(); };
-  on('musicBtn', toggle('music')); on('soundBtn', toggle('sound'));
-  on('pauseMusicBtn', toggle('music')); on('pauseSoundBtn', toggle('sound'));
+  on('reviveBtn', act(() => {
+    if (G.state !== 'over' || G.reviveCount >= REVIVE_MAX) return;
+    const cost = reviveCost();
+    if (U.save.currency < cost) { U.Sound.denied(); return; }
+    U.save.currency -= cost; U.persistSave();
+    revive();
+  }));
+  on('pauseSettingsBtn', act(() => { if (G.state === 'paused') QST.openSettings(); }));
+  // Ползунки громкости. На 'input' (каждое движение) только применяем громкость — слышно сразу;
+  // сейв и клик вешаем на 'change' (отпустили бегунок), иначе каждое движение писало бы
+  // в localStorage и дёргало облачный сейв.
+  // Клик по иконке слева от ползунка — мгновенный mute/unmute раздела. Прошлый уровень
+  // помним в замыкании и возвращаем при включении обратно: сбрасывать в 100 % было бы грубо,
+  // этот уровень пользователь выставлял сам. 100 берём только если помнить нечего.
+  const volSlider = (id, key) => {
+    const el = U.$(id); if (!el) return;
+    el.addEventListener('input', () => { U.save[key] = U.clamp(el.value | 0, 0, 100); U.syncAudioUI(); U.Sound.ensure(); U.Sound.applyVolume(); });
+    el.addEventListener('change', () => { U.persistSave(); U.Sound.click(); });
+    const row = el.closest('.vol-row'), ico = row && row.querySelector('.vol-ico');
+    if (!ico) return;
+    let prev = 0;
+    ico.addEventListener('click', () => {
+      const v = U.save[key] | 0;
+      if (v > 0) prev = v;
+      U.save[key] = v > 0 ? 0 : (prev || 100);
+      U.syncAudioUI(); U.Sound.ensure(); U.Sound.applyVolume(); U.persistSave(); U.Sound.click();
+    });
+  };
+  volSlider('musicVol', 'musicVol'); volSlider('soundVol', 'soundVol');
 }
 
 let initStarted = false;
@@ -457,17 +558,21 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
+  QST.initQuests();
+  PWR.initPowerups();
+  ADR.initAdReward();
+  RLT.initRoulette();
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));
 }
 
-U.readLocalSave(); U.syncToggleUI();
+U.readLocalSave(); U.syncAudioUI();
 function boot() {
   if (typeof THREE === 'undefined') { const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка: не загружен three.js'; return; }
-  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => U.withTimeout(U.Sdk.loadCloud(), 5000)).then(() => { U.syncToggleUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка загрузки :('; } });
+  Promise.all([GFX.loadTextures(), U.withTimeout(U.Sdk.init(), 8000)]).then(() => U.withTimeout(U.Sdk.loadCloud(), 5000)).then(() => { U.syncAudioUI(); init(); }).catch(err => { console.error(err); try { init(); } catch (e) { console.error(e); const lt = U.$('loadingText'); if (lt) lt.textContent = 'Ошибка загрузки :('; } });
 }
 boot();

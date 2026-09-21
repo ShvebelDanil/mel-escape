@@ -38,6 +38,15 @@ export function buy(id) {
   return true;
 }
 
+// Выдать питомца без оплаты (награда за просмотр роликов, source/shop.js).
+export function grant(id) {
+  const p = PETS.find(x => x.id === id);
+  if (!p || U.save.ownedPets.indexOf(id) >= 0) return false;
+  U.save.ownedPets.push(id);
+  U.persistSave();
+  return true;
+}
+
 export function select(id) {
   if (!isOwned(id) || U.save.selectedPet === id) return false;
   U.save.selectedPet = id;

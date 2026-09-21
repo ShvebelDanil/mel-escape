@@ -15,12 +15,18 @@ export function weightedPick(items, weightOf) {
 }
 
 export const UI = {};
-export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn',
+export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'reviveCost', 'reviveCostIcon', 'skipIntroBtn',
   'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
-  'newRecord', 'musicBtn', 'soundBtn', 'pauseMusicBtn', 'pauseSoundBtn', 'game',
+  'newRecord', 'musicVol', 'soundVol', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
-  'skinAction', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
-  'shopTabSkins', 'shopTabPets'];
+  'skinAction', 'skinAdBtn', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
+  'shopTabSkins', 'shopTabPets',
+  'settingsModal', 'questsModal', 'questsList', 'secretQuest', 'questToasts',
+  'curAddBtn', 'adRewardModal', 'adRewardTitle', 'adRewardText', 'adRewardBtn',
+  'rouletteModal', 'rouletteCurrency', 'rouletteCurIcon', 'rouletteAllIn', 'rouletteBetVal', 'rouletteBetIcon',
+  'rouletteBetInc', 'rouletteBetDec', 'rouletteChanceSlider', 'rouletteSpinBtn', 'rouletteHint',
+  'rouletteWheelDisc', 'rouletteWheelWater', 'rouletteWheelChance', 'rouletteWheelArrow',
+  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -45,29 +51,60 @@ export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', music: 1, sound: 1 };
+// totalDist/runs/miniGames/questsDone обслуживают систему заданий (source/quests.js):
+// накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
+// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки) и id уже выданных заданий.
+// musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
+// флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [], adProgress: {} };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+// adProgress: сколько роликов уже просмотрено за конкретный скин/питомца («skin:punk» -> 2).
+// Обычный объект, а не Map: он как есть уходит в JSON и в облако Яндекса.
+function cleanCounts(v) {
+  const out = {};
+  if (v && typeof v === 'object') for (const k in v) { const n = v[k] | 0; if (typeof k === 'string' && n > 0) out[k] = n; }
+  return out;
+}
+// Громкость из сейва. Старые сейвы (локальные и облачные) хранили только тумблер music/sound = 0|1 —
+// переводим его в проценты: было включено → 100 %, было выключено → 0 %.
+function readVol(v, legacy) {
+  if (typeof v === 'number') return clamp(v | 0, 0, 100);
+  if (typeof legacy === 'number') return legacy ? 100 : 0;
+  return 100;
+}
 export function readLocalSave() {
   try {
     const s = JSON.parse(localStorage.getItem('melEscapeSave') || 'null');
     if (s) {
-      save.best = s.best | 0; save.bottles = s.bottles | 0; save.music = s.music !== 0 ? 1 : 0; save.sound = s.sound !== 0 ? 1 : 0;
+      save.best = s.best | 0; save.bottles = s.bottles | 0; save.musicVol = readVol(s.musicVol, s.music); save.soundVol = readVol(s.soundVol, s.sound);
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
+      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
     }
   } catch (e) {}
 }
-export function syncToggleUI() {
-  Sound.musicOn = !!save.music; Sound.sfxOn = !!save.sound;
-  const mb = $('musicBtn'), sb = $('soundBtn'), pmb = $('pauseMusicBtn'), psb = $('pauseSoundBtn');
-  if (mb) mb.classList.toggle('off', !save.music);
-  if (sb) sb.classList.toggle('off', !save.sound);
-  if (pmb) pmb.classList.toggle('off', !save.music);
-  if (psb) psb.classList.toggle('off', !save.sound);
+// Одна пара ползунков (#musicVol/#soundVol) обслуживает и меню, и паузу: окно настроек
+// у них общее. Вызывать после любой правки save.musicVol/save.soundVol.
+export function syncAudioUI() {
+  Sound.musicVol = save.musicVol / 100; Sound.sfxVol = save.soundVol / 100;
+  // musicOn/sfxOn остаются как раньше — ими гейтится синтез и стрим музыки, просто
+  // теперь это производная от громкости, а не отдельный флаг.
+  Sound.musicOn = save.musicVol > 0; Sound.sfxOn = save.soundVol > 0;
+  syncVolRow('musicVol', save.musicVol); syncVolRow('soundVol', save.soundVol);
 }
+function syncVolRow(id, v) {
+  const el = $(id); if (!el) return;
+  if ((el.value | 0) !== v) el.value = v;
+  el.style.setProperty('--p', v + '%');  // заливка трека до бегунка, см. .vol-slider в index.html
+  const row = el.closest('.vol-row'); if (!row) return;
+  row.querySelector('.vol-val').textContent = v + '%';
+  // Иконка слева — индикатор и кнопка mute: на нуле перечёркивается (см. .vol-ico.off в index.html).
+  row.querySelector('.vol-ico').classList.toggle('off', v === 0);
+}
+
 let cloudTimer = null, cloudPending = false;
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, music: save.music, sound: save.sound, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet }, false)).catch(() => {});
+  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress }, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -98,11 +135,13 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone', 'adProgress'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
-        if (typeof d.music === 'number') save.music = d.music ? 1 : 0;
-        if (typeof d.sound === 'number') save.sound = d.sound ? 1 : 0;
+        // Только если в облаке эти поля вообще есть: иначе пустая облачная запись
+        // затирала бы локально выставленную громкость дефолтными 100 %.
+        if (typeof d.musicVol === 'number' || typeof d.music === 'number') save.musicVol = readVol(d.musicVol, d.music);
+        if (typeof d.soundVol === 'number' || typeof d.sound === 'number') save.soundVol = readVol(d.soundVol, d.sound);
       }
       if (d) {
         if (typeof d.currency === 'number') save.currency = Math.max(save.currency, d.currency | 0);
@@ -110,6 +149,16 @@ export const Sdk = {
         if (typeof d.selectedSkin === 'string' && d.selectedSkin) save.selectedSkin = d.selectedSkin;
         for (const id of cleanStrList(d.ownedPets)) if (save.ownedPets.indexOf(id) < 0) save.ownedPets.push(id);
         if (typeof d.selectedPet === 'string' && d.selectedPet) save.selectedPet = d.selectedPet;
+        // Прогресс заданий мёржим как и остальное — берём максимум/объединение,
+        // иначе переход между устройствами обнулял бы уже выполненное.
+        if (typeof d.totalDist === 'number') save.totalDist = Math.max(save.totalDist, d.totalDist | 0);
+        if (typeof d.runs === 'number') save.runs = Math.max(save.runs, d.runs | 0);
+        if (typeof d.miniGames === 'number') save.miniGames = Math.max(save.miniGames, d.miniGames | 0);
+        for (const id of cleanStrList(d.questsDone)) if (save.questsDone.indexOf(id) < 0) save.questsDone.push(id);
+        // Просмотренные за вещь ролики мёржим по каждому ключу отдельно: на другом
+        // устройстве могли досмотреть больше, терять это нечестно.
+        const cloudAds = cleanCounts(d.adProgress);
+        for (const k in cloudAds) if (cloudAds[k] > (save.adProgress[k] | 0)) save.adProgress[k] = cloudAds[k];
       }
       return true;
     }).catch(() => false);
@@ -154,33 +203,59 @@ export function showRewarded(onReward, onFail) {
 const BASS_SEQ = [110, 0, 110, 0, 130.81, 0, 110, 0, 98, 0, 98, 0, 110, 0, 130.81, 0, 87.31, 0, 87.31, 0, 110, 0, 130.81, 0, 98, 0, 110, 0, 130.81, 0, 146.83, 0];
 const LEAD_SEQ = [440, 0, 523.25, 0, 587.33, 523.25, 440, 0, 392, 0, 440, 0, 523.25, 0, 587.33, 0, 349.23, 0, 440, 0, 523.25, 440, 392, 0, 440, 523.25, 587.33, 0, 659.25, 587.33, 523.25, 0];
 const STEP_DUR = 60 / 138 / 2;
+// Упреждение планирования синтезированных звуков, секунды. Это и есть лекарство от «звук вдруг стал тихим»:
+// ctx.currentTime — время УЖЕ посчитанного аудио-блока. Если ставить события огибающей ровно на
+// currentTime, то при любой задержке главного потока часть огибающей оказывается в прошлом и не
+// воспроизводится вовсе: звук стартует с середины затухания и слышится резко тише (а если задержка
+// больше длительности звука — не слышится совсем). Клик по кнопке срабатывал чаще всего, потому что
+// сам тянет за собой сборку модели и компиляцию шейдеров в том же кадре. 20 мс вперёд гарантируют, что
+// огибающая целиком лежит в будущем; на слух такая задержка незаметна.
+const SFX_LEAD = 0.02;
+const CLICK_F = 650;   // частота синтезированного клика, Гц — фиксирована, разброса нет
+const CLICK_V = 0.10;  // его громкость — тоже фиксирована
+// Базовый уровень микса — громкость шины при ползунке на 100 %. Общий баланс музыки
+// и эффектов правится ТОЛЬКО здесь, положение ползунков на него множится (см. applyVolume).
+const MUSIC_BASE = 0.16, SFX_BASE = 0.5;
 export const Sound = {
-  ctx: null, master: null, musicGain: null, sfxGain: null, noiseBuf: null, musicOn: true, sfxOn: true, paused: false, step: 0, nextNote: 0, timer: null,
+  ctx: null, master: null, musicGain: null, sfxGain: null, clickVoice: null, noiseBuf: null, musicOn: true, sfxOn: true, musicVol: 1, sfxVol: 1, bankMusicOn: null, paused: false, step: 0, nextNote: 0, timer: null,
   // Банк семплов из assets/sounds/ (source/audio.js). Пока он null — играет только синтез ниже.
   bank: null,
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended' && !this.paused) { try { this.ctx.resume(); } catch (e) {} } return true; }
     try {
       const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
-      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(this.ctx.destination);
-      this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.16; this.musicGain.connect(this.master);
-      this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.5; this.sfxGain.connect(this.master);
-      this.applyToggles();
+      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
+      this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = MUSIC_BASE; this.musicGain.connect(this.master);
+      this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = SFX_BASE; this.sfxGain.connect(this.master);
+      this.applyVolume();
       // Банк сам решит, что играть: файл music_*.mp3 или синтезированный чиптюн.
       if (this.bank) this.bank.attach(); else this.startSynthMusic();
       return true;
     } catch (e) { return false; }
   },
-  applyToggles() { if (!this.ctx) return; this.musicGain.gain.value = this.musicOn ? 0.16 : 0; this.sfxGain.gain.value = this.sfxOn ? 0.5 : 0; if (this.bank) this.bank.toggles(); },
+  // Громкость шин = базовый уровень микса × положение ползунка. Ползунок на 100 % даёт
+  // ровно ту громкость, что была в игре до появления настройки.
+  applyVolume() {
+    if (!this.ctx) return;
+    this.musicGain.gain.value = MUSIC_BASE * this.musicVol;
+    this.sfxGain.gain.value = SFX_BASE * this.sfxVol;
+    // Банк дёргаем ТОЛЬКО когда музыка реально включилась/выключилась: bank.toggles() ведёт
+    // к apply() с кроссфейдом трека, а вызывать его на каждое движение ползунка незачем —
+    // сама громкость уже задана строкой выше, через musicGain.
+    if (this.bank && this.musicOn !== this.bankMusicOn) { this.bankMusicOn = this.musicOn; this.bank.toggles(); }
+  },
   osc(f0, f1, dur, type, vol, t, out) {
     const o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t);
     if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
   },
-  tone(f0, f1, dur, type, vol, when) { if (!this.ctx || !this.sfxOn) return; this.osc(f0, f1, dur, type || 'sine', vol, when || this.ctx.currentTime, this.sfxGain); },
+  // Единая точка отсчёта для всего синтеза: всегда чуть ВПЕРЁД от текущего времени (см. SFX_LEAD).
+  sfxTime() { return this.ctx.currentTime + SFX_LEAD; },
+  tone(f0, f1, dur, type, vol, when) { if (!this.ctx || !this.sfxOn) return; this.osc(f0, f1, dur, type || 'sine', vol, when || this.sfxTime(), this.sfxGain); },
   noise(dur, vol, freq) {
-    if (!this.ctx || !this.sfxOn) return; const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.ctx || !this.sfxOn) return; const ctx = this.ctx, t = this.sfxTime();
     if (!this.noiseBuf) { const n = ctx.sampleRate, buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; this.noiseBuf = buf; }
     const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq || 900; const g = ctx.createGain();
@@ -198,13 +273,37 @@ export const Sound = {
   land() { if (this.sfx('action')) return; this.noise(0.12, 0.1, 500); },
   roll() { if (this.sfx('action')) return; this.noise(0.28, 0.14, 700); },
   flip() { if (this.sfx('action')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
-  coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
+  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с чекушкой.
+  // Пока файла assets/sounds/book.mp3 нет — играет шорох страниц (синтез).
+  book() { if (this.sfx('book')) return; this.noise(0.18, 0.12, 2600); this.tone(520, 380, 0.14, 'triangle', 0.07); },
+  coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
+  // Поднятый паверап (source/powerups.js). Свой ключ банка — assets/sounds/powerup.mp3;
+  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычная чекушка.
+  powerup() {
+    if (this.sfx('powerup')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(660, 660, 0.09, 'square', 0.13, t); this.tone(880, 880, 0.09, 'square', 0.13, t + 0.07);
+    this.tone(1320, 1760, 0.22, 'triangle', 0.14, t + 0.14);
+  },
   // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
   stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   crash() { if (this.sfx('hit')) return; this.noise(0.4, 0.3, 400); this.tone(180, 55, 0.5, 'sawtooth', 0.22); },
-  growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.ctx.currentTime : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
-  click() { if (this.sfx('click')) return; this.tone(650, 650, 0.05, 'sine', 0.1); },
+  growl() { if (this.sfx('growl')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(220, 90, 0.35, 'sawtooth', 0.14, t); this.tone(140, 70, 0.4, 'sawtooth', 0.12, t + 0.05); },
+  // Клик по кнопке. Строго одноголосый и полностью детерминированный: одна и та же нота, одна
+  // и та же громкость, никакого разброса. Правится только константами здесь: CLICK_F / CLICK_V.
+  // Огибающая строится от sfxTime(), а не от currentTime — именно отсюда брались «провалы»
+  // громкости на подтормаживающем кадре (см. SFX_LEAD).
+  click() {
+    if (this.sfx('click')) return;
+    if (!this.ctx || !this.sfxOn) return;
+    const t = this.sfxTime();
+    if (this.clickVoice) { try { this.clickVoice.stop(t); } catch (e) {} }
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(CLICK_F, t);
+    g.gain.setValueAtTime(CLICK_V, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t + 0.07);
+    this.clickVoice = o;
+  },
   // Fallback — СВОЙ синтез, а не делегирование в stumble(): та теперь сама проверяет
   // общий банк-ключ 'hit', и если у тебя уже есть hit.mp3 (для столкновений), но ещё нет
   // ui_denied.mp3, магазин при нехватке чекушек играл бы чужой звук столкновения.

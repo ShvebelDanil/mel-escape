@@ -2,20 +2,29 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
 import * as PT from './pets.js';
+import * as QST from './quests.js';
 import * as TEX from './textures.js';
+import * as ADR from './adreward.js';
 
 // Магазин живёт отдельно от игровой логики: он только ставит уже существующего
 // Мэла (и питомца) в уже существующий класс и рулит собственным UI.
 const SHOP_Z = -7.4, CAM_Z = -2.95;
 
 let deps = null, mode = 'skins', index = 0, modalOpen = false;
-let dragActive = false, dragX = 0, previewYaw = 0;
+let dragActive = false, dragX = 0, previewYaw = 0, adPending = false;
+
+// Ключ прогресса роликов в сейве: id скина и питомца могут совпасть, поэтому префикс.
+const adKey = (m, id) => (m === 'pets' ? 'pet:' : 'skin:') + id;
+const adSeen = key => U.save.adProgress[key] | 0;
+// Вещь можно взять за рекламу, если она вообще продаётся: бесплатное и секретное мимо.
+const adBuyable = (s, owned, locked) => !owned && !locked && !s.secret && s.price > 0;
 
 function cat() {
   return mode === 'pets'
     // при перелистывании питомца даём послушать его голос (assets/sounds/pet_<id>.mp3)
-    ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, select: PT.select, preview: id => { deps.setPreviewPet(id); U.Sound.petVoice(id); } }
-    : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, select: SK.select, preview: id => deps.setPreviewSkin(id) };
+    ? { list: PT.PETS, isOwned: PT.isOwned, selectedId: PT.selectedId, buy: PT.buy, grant: PT.grant, select: PT.select, preview: id => { deps.setPreviewPet(id); U.Sound.petVoice(id); } }
+    // закрытый секретный скин показываем чёрным силуэтом — по нему не понять, что внутри
+    : { list: SK.SKINS, isOwned: SK.isOwned, selectedId: SK.selectedId, buy: SK.buy, grant: SK.grant, select: SK.select, preview: id => deps.setPreviewSkin(id, SK.isLocked(id)) };
 }
 
 export function initShop(d) {
@@ -28,6 +37,7 @@ export function initShop(d) {
   on('skinPrevBtn', act(() => cycle(-1)));
   on('skinNextBtn', act(() => cycle(1)));
   on('skinAction', act(() => action()));
+  on('skinAdBtn', act(() => watchForItem()));
   // Точки-индикаторы кликабельны: делегируем клик с контейнера, чтобы не
   // навешивать слушатель на каждую точку при каждом refresh().
   const dots = U.$('skinDots');
@@ -100,9 +110,16 @@ function goTo(i) {
 function action() {
   const c = cat(), s = c.list[index];
   const noun = mode === 'pets' ? 'питомца' : 'скина';
+  // Секретный скин не продаётся: объясняем, что его открывают задания.
+  if (mode === 'skins' && SK.isLocked(s.id)) {
+    showModal('err', 'СКИН ЗАКРЫТ!', 'Этот скин нельзя купить — он выдаётся за все задания. Выполнено ' + QST.doneCount() + ' из ' + QST.QUESTS.length + '.', 'ПОНЯТНО');
+    U.Sound.denied();
+    return;
+  }
   if (c.isOwned(s.id)) {
     // Смена уже купленного скина/питомца — не покупка и не сбор монеты, обычный клик UI.
-    if (c.select(s.id)) { U.Sound.click(); refresh(); }
+    // Свой Sound.click() тут не нужен: кнопка обёрнута в act(), он уже прозвучал.
+    if (c.select(s.id)) refresh();
     return;
   }
   if (U.save.currency < s.price) {
@@ -111,11 +128,62 @@ function action() {
     return;
   }
   if (c.buy(s.id)) {
+    // Куплено за чекушки — недосмотренные ролики за эту же вещь больше не нужны.
+    delete U.save.adProgress[adKey(mode, s.id)];
+    U.persistSave();
     c.select(s.id);
     U.Sound.purchase();
     refresh();
     showModal('ok', 'ПОКУПКА СОВЕРШЕНА!', mode === 'pets' ? 'Питомец теперь доступен для выбора.' : 'Теперь этот скин доступен в твоём гардеробе.', 'ОК');
   }
+}
+
+// Второй путь к вещи: досмотреть N роликов. N = цена / награда за ролик в меню,
+// см. ADR.adsFor — при правке цены или AD_REWARD число пересчитывается само.
+function watchForItem() {
+  if (adPending) return;
+  const c = cat(), s = c.list[index];
+  const owned = c.isOwned(s.id), locked = mode === 'skins' && SK.isLocked(s.id);
+  if (!adBuyable(s, owned, locked)) return;
+  const key = adKey(mode, s.id), need = ADR.adsFor(s.price);
+  adPending = true;
+  renderAdBtn(s, owned, locked);
+  ADR.watchAd(
+    () => {
+      adPending = false;
+      const seen = adSeen(key) + 1;
+      if (seen < need) {
+        // Промежуточный просмотр: молча обновляем счётчик на кнопке, окно не дёргаем.
+        // Звука тут намеренно нет: purchase() — звук получения вещи, а вещь ещё не получена.
+        U.save.adProgress[key] = seen;
+        U.persistSave();
+        refresh();
+        return;
+      }
+      // Набрали норму: прогресс в сейве больше не нужен.
+      delete U.save.adProgress[key];
+      c.grant(s.id);          // grant сам пишет сейв
+      c.select(s.id);
+      U.Sound.purchase();
+      refresh();
+      showModal('ok', 'ОТКРЫТО ЗА РЕКЛАМУ!', mode === 'pets' ? 'Питомец теперь доступен для выбора.' : 'Теперь этот скин доступен в твоём гардеробе.', 'ОК');
+    },
+    () => {
+      adPending = false;
+      refresh();
+      showModal('err', 'РЕКЛАМА НЕ ПОКАЗАНА', 'Ролик не был досмотрен до конца или реклама сейчас недоступна. Попробуй ещё раз.', 'ПОНЯТНО');
+    }
+  );
+}
+
+function renderAdBtn(s, owned, locked) {
+  const b = U.UI.skinAdBtn; if (!b) return;
+  const can = adBuyable(s, owned, locked);
+  U.show(b, can);
+  if (!can) return;
+  const need = ADR.adsFor(s.price), seen = Math.min(adSeen(adKey(mode, s.id)), need);
+  b.textContent = adPending ? 'ЗАГРУЗКА…' : 'ЗА РЕКЛАМУ ' + seen + '/' + need;
+  b.dataset.busy = adPending ? '1' : '0';
 }
 
 function showModal(kind, title, text, btn) {
@@ -133,18 +201,21 @@ export function refreshCurrency() {
   const v = U.save.currency;
   if (U.UI.menuCurrency) U.UI.menuCurrency.textContent = v;
   if (U.UI.shopCurrency) U.UI.shopCurrency.textContent = v;
+  if (U.UI.rouletteCurrency) U.UI.rouletteCurrency.textContent = v;
 }
 
 function refresh() {
   refreshCurrency();
   const c = cat(), s = c.list[index], owned = c.isOwned(s.id), selected = c.selectedId() === s.id;
+  const locked = mode === 'skins' && SK.isLocked(s.id);
   if (U.UI.shopTabSkins) U.UI.shopTabSkins.dataset.active = mode === 'skins' ? '1' : '0';
   if (U.UI.shopTabPets) U.UI.shopTabPets.dataset.active = mode === 'pets' ? '1' : '0';
-  if (U.UI.skinName) U.UI.skinName.textContent = s.name;
-  if (U.UI.skinDesc) U.UI.skinDesc.textContent = s.desc;
+  if (U.UI.skinName) U.UI.skinName.textContent = locked ? '???' : s.name;
+  if (U.UI.skinDesc) U.UI.skinDesc.textContent = locked ? 'Секретный скин. Выполни все задания, чтобы открыть его.' : s.desc;
   const btn = U.UI.skinAction;
   if (btn) {
-    if (selected) { btn.textContent = '✓ ВЫБРАНО'; btn.dataset.state = 'selected'; }
+    if (locked) { btn.textContent = 'ЗАКРЫТО'; btn.dataset.state = 'locked'; }
+    else if (selected) { btn.textContent = '✓ ВЫБРАНО'; btn.dataset.state = 'selected'; }
     else if (owned) { btn.textContent = 'ВЫБРАТЬ'; btn.dataset.state = 'select'; }
     else if (U.save.currency >= s.price) { btn.textContent = 'КУПИТЬ'; btn.dataset.state = 'buy'; }
     else { btn.textContent = 'КУПИТЬ'; btn.dataset.state = 'locked'; }
@@ -154,12 +225,16 @@ function refresh() {
     if (dots.children.length !== c.list.length) { dots.innerHTML = ''; for (let i = 0; i < c.list.length; i++) dots.appendChild(document.createElement('i')); }
     for (let i = 0; i < dots.children.length; i++) dots.children[i].className = i === index ? 'on' : '';
   }
-  renderPriceRow(s, owned);
+  renderPriceRow(s, owned, locked);
+  renderAdBtn(s, owned, locked);
 }
 
-function renderPriceRow(s, owned) {
+function renderPriceRow(s, owned, locked) {
   const row = U.UI.skinPrice; if (!row) return;
   row.innerHTML = '';
+  // У закрытого секретного скина вместо цены — прогресс по заданиям.
+  if (locked) { row.dataset.state = 'locked'; row.textContent = 'ЗАДАНИЯ ' + QST.doneCount() + ' / ' + QST.QUESTS.length; return; }
+  if (s.secret) { row.dataset.state = 'free'; row.textContent = 'ОТКРЫТ ЗА ЗАДАНИЯ'; return; }
   if (s.price === 0) { row.dataset.state = 'free'; row.textContent = 'БЕСПЛАТНО'; return; }
   if (owned) { row.dataset.state = 'free'; row.textContent = 'КУПЛЕНО'; return; }
   row.dataset.state = U.save.currency >= s.price ? 'price' : 'locked';
