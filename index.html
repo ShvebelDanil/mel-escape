@@ -710,6 +710,27 @@
   @keyframes rltWinPop { 0%{transform:scale(.5);} 60%{transform:scale(1.18);} 100%{transform:scale(1);} }
   .rlt-result-text.on { animation:rltShake .4s ease; }
   @keyframes rltShake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+
+  /* ===== Телефон: то же окно, но ниже по высоте =====
+     Зеркало десктопного @media (min-width:680px) — ПК эти правила не видит вообще.
+     На узком экране окно складывается в столбик, и суммарная высота переставала влезать
+     в .box (max-height:calc(100% - 20px)), из-за чего низ окна награды обрезался.
+     Лечим не скроллом, а высотой самих панелей: главный выигрыш — столбик кнопок
+     ALL/▲/▼ (80px) превращается в строку (30px). Остальное — только урезанные отступы,
+     визуально блоки те же. */
+  @media (max-width:679.98px) {
+    .rlt-body { gap:10px; }
+    .rlt-col { gap:8px; }
+    .rlt-panel { padding:8px 12px 10px; gap:6px; }
+    /* Ставка в одну строку: иконка + число + ряд кнопок справа. Кнопки стали выше (30px
+       вместо 24px) — в строке место есть, а по пальцу попасть проще. */
+    .rlt-bet img { height:2em; }
+    .rlt-bet-steps { flex-direction:row; gap:5px; }
+    .rlt-bet-steps button { width:34px; height:30px; }
+    .rlt-bet-steps button.rlt-allin { width:44px; }
+    .rlt-chance-presets button { padding:6px 4px; }
+    .rlt-result { padding:14px 12px; gap:6px; }
+  }
 </style>
 </head>
 <body>
