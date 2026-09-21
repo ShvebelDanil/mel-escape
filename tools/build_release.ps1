@@ -5,9 +5,12 @@
 # tools/, README.md) в сборку не попадают никогда.
 #
 # Использование:
-#   .\tools\build_release.ps1 -Version 1.3              # полная сборка: ZIP + синхронизация папки
-#   .\tools\build_release.ps1 -Version 1.3 -NoSync      # только ZIP, релизную папку не трогать
-#   .\tools\build_release.ps1 -Version 1.3 -KeepStale   # не удалять из релизной папки лишние файлы
+#   .\tools\build_release.ps1 -Version 1.3       # собрать архив рядом с папкой проекта
+#   .\tools\build_release.ps1 -Version 1.3 -OutDir C:\Users\Gleb\Desktop   # положить архив в другое место
+#
+# Распакованная копия сборки отдельной папкой не нужна — её делает только ключ -Sync,
+# и то на случай, если для релиза захочется вести отдельный git.
+#   .\tools\build_release.ps1 -Version 1.3 -Sync -ReleaseDir C:\путь\mel-escape-release
 #
 # Проверки (любая непройденная останавливает сборку):
 #   - index.html лежит в корне архива, а не во вложенной папке;
@@ -19,9 +22,11 @@
 
 param(
     [Parameter(Mandatory = $true)][string]$Version,
-    [string]$ReleaseDir = 'C:\Users\Gleb\Desktop\mel-escape-release',
-    [string]$OutDir = 'C:\Users\Gleb\Desktop',
-    [switch]$NoSync,
+    # По умолчанию архив кладётся рядом с папкой проекта — не зависит от того,
+    # как разложен рабочий стол, и не теряется при переносе папок.
+    [string]$OutDir = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent),
+    [string]$ReleaseDir = '',
+    [switch]$Sync,
     [switch]$KeepStale
 )
 
@@ -108,7 +113,7 @@ $zipMb = (Get-Item $zip).Length / 1MB
 Write-Host ("ZIP: {0}  ({1:N1} МБ)" -f $zip, $zipMb) -ForegroundColor Green
 
 # --- 5. Синхронизация релизной папки --------------------------------------
-if (-not $NoSync) {
+if ($Sync -and $ReleaseDir) {
     if (-not (Test-Path $ReleaseDir)) { New-Item -ItemType Directory -Force $ReleaseDir | Out-Null }
     $relRoot = (Resolve-Path $ReleaseDir).Path.TrimEnd('\')
     $shipped = @{}
