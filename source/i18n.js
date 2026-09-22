@@ -88,6 +88,7 @@ const DICT = {
     'menu.collected': 'Всего собрано',
     'menu.play': 'Играть',
     'menu.shop': 'Магазин',
+    'menu.leaderboard': 'Рекорды',
 
     'hint.lanes': 'полосы',
     'hint.jump': 'прыжок',
@@ -197,6 +198,17 @@ const DICT = {
     'ad.errText': 'Награда не засчитана: ролик не был досмотрен до конца или реклама сейчас недоступна.',
     'ad.errBtn': 'Понятно',
 
+    'lb.title': 'Рекорды',
+    'lb.login': 'Войти',
+    'lb.loading': 'Загружаем таблицу…',
+    'lb.guest': 'Войди в аккаунт Яндекса, чтобы попасть в таблицу рекордов и хранить прогресс на всех устройствах.',
+    'lb.empty': 'В таблице пока пусто. Сделай забег — и займёшь первое место!',
+    'lb.error': 'Не удалось загрузить таблицу. Попробуй позже.',
+    'lb.offline': 'Таблица рекордов доступна только в Яндекс Играх.',
+    'lb.anon': 'Аноним',
+    'lb.yourPlace': 'Твоё место: {n}',
+    'lb.noPlace': 'Тебя ещё нет в таблице — сделай забег!',
+
     'skin.schoolboy.name': 'ШКОЛЬНИК',
     'skin.schoolboy.desc': 'Григорий Ляхов.',
     'skin.schoolboy2.name': 'ШКОЛЬНИК 2.0',
@@ -253,6 +265,7 @@ const DICT = {
     'menu.collected': 'Total collected',
     'menu.play': 'Play',
     'menu.shop': 'Shop',
+    'menu.leaderboard': 'Leaderboard',
 
     'hint.lanes': 'lanes',
     'hint.jump': 'jump',
@@ -362,6 +375,17 @@ const DICT = {
     'ad.errText': 'Reward not granted: the video was not watched to the end, or ads are unavailable right now.',
     'ad.errBtn': 'Got it',
 
+    'lb.title': 'Leaderboard',
+    'lb.login': 'Log in',
+    'lb.loading': 'Loading the leaderboard…',
+    'lb.guest': 'Log in with your Yandex account to join the leaderboard and keep your progress on every device.',
+    'lb.empty': 'The leaderboard is empty. Make a run and take first place!',
+    'lb.error': 'Could not load the leaderboard. Try again later.',
+    'lb.offline': 'The leaderboard is only available on Yandex Games.',
+    'lb.anon': 'Anonymous',
+    'lb.yourPlace': 'Your place: {n}',
+    'lb.noPlace': 'You are not on the board yet — make a run!',
+
     'skin.schoolboy.name': 'SCHOOLBOY',
     'skin.schoolboy.desc': 'Grigory Lyakhov.',
     'skin.schoolboy2.name': 'SCHOOLBOY 2.0',
@@ -418,6 +442,7 @@ const DICT = {
     'menu.collected': 'Toplam toplanan',
     'menu.play': 'Oyna',
     'menu.shop': 'Mağaza',
+    'menu.leaderboard': 'Rekorlar',
 
     'hint.lanes': 'şerit',
     'hint.jump': 'zıpla',
@@ -526,6 +551,17 @@ const DICT = {
     'ad.errTitle': 'Olmadı',
     'ad.errText': 'Ödül verilmedi: video sonuna kadar izlenmedi ya da şu anda reklam yok.',
     'ad.errBtn': 'Anladım',
+
+    'lb.title': 'Rekorlar',
+    'lb.login': 'Giriş yap',
+    'lb.loading': 'Tablo yükleniyor…',
+    'lb.guest': 'Rekor tablosuna girmek ve ilerlemeni tüm cihazlarda saklamak için Yandex hesabınla giriş yap.',
+    'lb.empty': 'Tablo henüz boş. Bir koşu yap ve birinci ol!',
+    'lb.error': 'Tablo yüklenemedi. Daha sonra tekrar dene.',
+    'lb.offline': 'Rekor tablosu yalnızca Yandex Games üzerinde kullanılabilir.',
+    'lb.anon': 'Anonim',
+    'lb.yourPlace': 'Sıralaman: {n}',
+    'lb.noPlace': 'Henüz tabloda değilsin — bir koşu yap!',
 
     'skin.schoolboy.name': 'ÖĞRENCİ',
     'skin.schoolboy.desc': 'Grigoriy Lyahov.',

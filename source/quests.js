@@ -164,10 +164,10 @@ function renderSecret() {
 
 // ===== Модалки =====
 const isOpen = el => !!el && !el.classList.contains('hidden');
-export const modalOpen = () => isOpen(U.UI.settingsModal) || isOpen(U.UI.questsModal) || isOpen(U.UI.rouletteModal) || isOpen(U.UI.adRewardModal);
-// adRewardModal и rouletteModal тоже гасим здесь (Escape, уход в магазин/забег), но их
-// собственные кнопки живут в source/adreward.js и source/roulette.js — сюда они попадают только как элементы.
-export function closeAll() { U.show(U.UI.settingsModal, false); U.show(U.UI.questsModal, false); U.show(U.UI.rouletteModal, false); U.show(U.UI.adRewardModal, false); }
+export const modalOpen = () => isOpen(U.UI.settingsModal) || isOpen(U.UI.questsModal) || isOpen(U.UI.rouletteModal) || isOpen(U.UI.adRewardModal) || isOpen(U.UI.leaderboardModal);
+// adRewardModal, rouletteModal и leaderboardModal тоже гасим здесь (Escape, уход в магазин/забег), но их
+// собственные кнопки живут в source/adreward.js, source/roulette.js и source/leaderboard.js — сюда они попадают только как элементы.
+export function closeAll() { U.show(U.UI.settingsModal, false); U.show(U.UI.questsModal, false); U.show(U.UI.rouletteModal, false); U.show(U.UI.adRewardModal, false); U.show(U.UI.leaderboardModal, false); }
 export function openSettings() { closeAll(); U.show(U.UI.settingsModal, true); }
 export function openQuests() { closeAll(); render(); U.show(U.UI.questsModal, true); }
 

@@ -11,6 +11,7 @@ import * as TEX from './textures.js';
 import * as ADR from './adreward.js';
 import * as PWR from './powerups.js';
 import * as RLT from './roulette.js';
+import * as LB from './leaderboard.js';
 import * as I18N from './i18n.js';
 
 const COMBO_WINDOW = 1.3;
@@ -127,7 +128,9 @@ function caught() {
   G.state = 'over'; G.overT = 0; G.overShown = false; granny.catchMode = true; granny.targetZOff = -0.85; G.shake = 0.8;
   U.Sound.crash(); U.replayCss(U.UI.flash); ENT.burst(player.x, player.y + 1.2, player.z, '#b0451f', 8, 3);
   U.Sdk.gameplayStop(); const m = Math.floor(G.dist); const isRecord = m > U.save.best;
-  if (isRecord) U.save.best = m;
+  // Рекорд уходит в таблицу лидеров только когда он действительно обновился: setLeaderboardScore
+  // с уже записанным результатом просто тратит лимит запросов (сам LB.submit это тоже проверяет).
+  if (isRecord) { U.save.best = m; LB.submit(m); }
   const gained = G.bottles - G.bankedBottles; U.save.bottles += gained; U.save.currency += gained; G.bankedBottles = G.bottles;
   U.save.totalDist += m - G.bankedDist; G.bankedDist = m;
   if (!G.runBanked) { G.runBanked = true; U.save.runs++; }
@@ -530,6 +533,7 @@ function bindInput() {
   on('settingsBtn', act(() => QST.openSettings()));
   on('questsBtn', act(() => QST.openQuests()));
   on('minigameBtn', act(() => RLT.open()));
+  on('leaderboardBtn', act(() => LB.open()));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
@@ -585,6 +589,14 @@ function init() {
   PWR.initPowerups();
   ADR.initAdReward();
   RLT.initRoulette();
+  // onSaveMerged дёргается после входа в аккаунт: облако могло принести другой рекорд,
+  // валюту и выбранный скин/питомца — интерфейс и сцена меню должны это показать сразу.
+  LB.initLeaderboard({ onSaveMerged: () => {
+    updateMenuStats();
+    if (G.state !== 'menu') return;
+    applyPlayerSkin(SK.selectedId()); applyPlayerPet(PT.selectedId());
+    setupMenuScene();   // возвращаем новой модели позу и разворот меню; окно рекордов при этом не закрывается
+  } });
   AUD.initAudio();
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();

@@ -566,6 +566,37 @@
   /* ===== Уведомление о выполненном задании =====
      Контейнер — колонка: несколько уведомлений подряд выстраиваются друг под другом,
      а не накладываются. pointer-events:none, чтобы не перехватывать свайпы управления. */
+  /* ===== Таблица лидеров ===== */
+  /* min-height:0 — как у #questsList: без него список не скроллится, а распирает панель. */
+  #lbList { display:flex; flex-direction:column; gap:8px; overflow-y:auto; min-height:0; padding:2px 2px 5px; }
+  .lb-row { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:10px; padding:8px 11px; }
+  /* Своя строка — жёлтая, как акцент всего интерфейса: игрок находит себя без чтения имён. */
+  .lb-row[data-me="1"] { background:rgba(255,217,74,0.16); border-color:rgba(255,217,74,0.45); }
+  .lb-rank {
+    min-width:30px; height:30px; padding:0 5px; border-radius:10px; flex:none;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:900; color:#b8ccbe;
+  }
+  /* Призовая тройка — золото / серебро / бронза, остальные ранги нейтральные. */
+  .lb-row[data-rank="1"] .lb-rank { color:#ffd94a; border-color:rgba(255,217,74,0.5); }
+  .lb-row[data-rank="2"] .lb-rank { color:#dfe7ee; border-color:rgba(223,231,238,0.45); }
+  .lb-row[data-rank="3"] .lb-rank { color:#e0a26a; border-color:rgba(224,162,106,0.45); }
+  .lb-ava {
+    width:30px; height:30px; border-radius:50%; flex:none; overflow:hidden;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+  }
+  .lb-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+  /* min-width:0 обязателен: без него длинный ник распирает грид и счёт уезжает из строки. */
+  .lb-name { min-width:0; font-size:clamp(12px,3.2vw,14px); font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .lb-score { flex:none; display:flex; align-items:baseline; gap:3px; font-weight:900; color:#ffd94a; font-size:clamp(13px,3.4vw,15px); }
+  .lb-score small { font-size:10px; font-weight:800; color:#b8ccbe; }
+  /* Разрыв рангов между топом и соседями игрока. */
+  .lb-gap { text-align:center; color:#7f9488; letter-spacing:3px; font-weight:900; line-height:0.8; }
+  .lb-you { text-align:center; font-size:clamp(12px,3.2vw,14px); font-weight:800; color:#ffd94a; }
+  .lb-msg { text-align:center; font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4; padding:12px 4px; }
+  #lbLoginBtn { align-self:center; }
+
   #questToasts {
     position:fixed; top:calc(10px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
     z-index:30; pointer-events:none; width:min(360px, calc(100% - 24px));
@@ -766,6 +797,14 @@
     <path d="M4.8 7h14.4"/>
     <path d="M15.3 10.4a3.3 3.3 0 0 1-6.6 0"/>
   </symbol>
+  <!-- Кубок: чаша с боковыми ручками, ножка и подставка. Только обводка, как у остальных. -->
+  <symbol id="ic-cup" viewBox="0 0 24 24">
+    <path d="M7.3 3.2h9.4v5.2a4.7 4.7 0 0 1-9.4 0z"/>
+    <path d="M7.3 4.7H4.6v1.6a3.3 3.3 0 0 0 3.3 3.3"/>
+    <path d="M16.7 4.7h2.7v1.6a3.3 3.3 0 0 1-3.3 3.3"/>
+    <path d="M12 13.1v3.5"/>
+    <path d="M8.5 20.8h7l-.9-4.2H9.4z"/>
+  </symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5.2 12.6l4.6 4.6L18.8 7.2"/></symbol>
   <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></symbol>
   <!-- Иконки заданий: id совпадает с полем icon в QUESTS (source/quests.js). -->
@@ -841,6 +880,7 @@
   <div class="menu-actions">
     <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span><span data-i18n="menu.play">Играть</span></button>
     <button class="menu-btn menu-btn--secondary" id="shopBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bag"/></svg><span data-i18n="menu.shop">Магазин</span></button>
+    <button class="menu-btn menu-btn--secondary" id="leaderboardBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-cup"/></svg><span data-i18n="menu.leaderboard">Рекорды</span></button>
   </div>
   <div class="hint-row">
     <span><b>←</b><b>→</b> <span data-i18n="hint.lanes">полосы</span></span>
@@ -952,6 +992,19 @@
       <div class="sq-shot"><img alt=""><b>?</b></div>
     </div>
     <div id="questsList"></div>
+  </div>
+</div>
+
+<!-- Таблица лидеров Яндекс Игр (кнопка «Рекорды» под «Магазином»).
+     Строки, состояния и вход в аккаунт — source/leaderboard.js. -->
+<div id="leaderboardModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="lbClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-cup"/></svg></span><span class="t" data-i18n="lb.title">Рекорды</span></div></div>
+    <div class="lb-you hidden" id="lbYou"></div>
+    <div class="lb-msg hidden" id="lbMsg"></div>
+    <button class="btn small hidden" id="lbLoginBtn" data-i18n="lb.login">Войти</button>
+    <div id="lbList" class="hidden"></div>
   </div>
 </div>
 

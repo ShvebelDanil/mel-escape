@@ -26,7 +26,8 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'rouletteModal', 'rouletteCurrency', 'rouletteCurIcon', 'rouletteAllIn', 'rouletteBetVal', 'rouletteBetIcon',
   'rouletteBetInc', 'rouletteBetDec', 'rouletteChanceSlider', 'rouletteSpinBtn', 'rouletteHint',
   'rouletteWheelDisc', 'rouletteWheelWater', 'rouletteWheelChance', 'rouletteWheelArrow',
-  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText'];
+  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText',
+  'leaderboardModal', 'lbList', 'lbMsg', 'lbLoginBtn', 'lbYou'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -143,7 +144,10 @@ export function flushSave() {
 }
 
 export const Sdk = {
-  ysdk: null, playerPromise: null,
+  // authorized — известен только после checkAuth(); до него считаем игрока анонимом.
+  // Флаг синхронный намеренно: его дёргает интерфейс таблицы лидеров, а ждать промис
+  // на каждое открытие окна незачем — состояние меняется только при входе в аккаунт.
+  ysdk: null, playerPromise: null, lbPromise: null, authorized: false,
   init() {
     return new Promise(res => {
       if (typeof window.YaGames === 'undefined') return res();
@@ -156,6 +160,42 @@ export const Sdk = {
       try { this.playerPromise = this.ysdk.getPlayer({ scopes: false }); this.playerPromise.catch(() => { Sdk.playerPromise = null; }); } catch (e) { return Promise.reject(e); }
     }
     return this.playerPromise;
+  },
+  // getPlayer({scopes:false}) отдаёт игрока и НЕавторизованному — у такого getMode() === 'lite'.
+  // Это единственный способ отличить аккаунт от анонима: данные анонима лежат во временном
+  // хранилище браузера, а в таблицу лидеров его не пускают вовсе.
+  checkAuth() {
+    return this.getPlayer().then(p => { Sdk.authorized = p.getMode() !== 'lite'; return Sdk.authorized; }).catch(() => { Sdk.authorized = false; return false; });
+  },
+  // После входа в аккаунт прежний объект игрока остаётся анонимным и пишет данные не туда,
+  // поэтому кеш сбрасываем целиком. lastCloudJson — вместе с ним: снимок «это уже в облаке»
+  // относился к хранилищу анонима, а аккаунт своей копии ещё не видел.
+  resetPlayer() { this.playerPromise = null; lastCloudJson = ''; },
+  // Окно входа Яндекса. Вызывать ТОЛЬКО из обработчика клика: автоматический показ
+  // площадка блокирует, и это повод для отказа на модерации. Промис отклоняется,
+  // если игрок закрыл окно, — это нормальный сценарий, а не ошибка.
+  login() {
+    const y = this.ysdk;
+    if (!y || !y.auth || !y.auth.openAuthDialog) return Promise.reject(new Error('no sdk'));
+    return y.auth.openAuthDialog().then(() => { Sdk.resetPlayer(); return Sdk.checkAuth(); });
+  },
+  // Доступ к имени и аватару (scopes:true) спрашиваем ОТДЕЛЬНО и только после входа: игрок
+  // сам нажал «Войти» ради таблицы рекордов, поэтому вопрос уместен именно там, а на старте
+  // игры лишнее окно разрешений только отпугивает — потому основной getPlayer и идёт со
+  // scopes:false. Отказ ничего не ломает: авторизация уже состоялась, просто своя строка
+  // в таблице останется без имени. Успех — подменяем кеш игрока на «полный».
+  askName() {
+    const y = this.ysdk;
+    if (!y || !y.getPlayer) return Promise.resolve();
+    try { return y.getPlayer({ scopes: true }).then(p => { Sdk.playerPromise = Promise.resolve(p); }).catch(() => {}); } catch (e) { return Promise.resolve(); }
+  },
+  // Объект таблиц лидеров кешируем так же, как игрока: getLeaderboards() — сетевой вызов.
+  getLeaderboards() {
+    if (!this.ysdk || !this.ysdk.getLeaderboards) return Promise.reject(new Error('no sdk'));
+    if (!this.lbPromise) {
+      try { this.lbPromise = this.ysdk.getLeaderboards(); this.lbPromise.catch(() => { Sdk.lbPromise = null; }); } catch (e) { return Promise.reject(e); }
+    }
+    return this.lbPromise;
   },
   feature(api, method) { try { const f = Sdk.ysdk && Sdk.ysdk.features && Sdk.ysdk.features[api]; if (f) f[method](); } catch (e) {} },
   loadingReady() { Sdk.feature('LoadingAPI', 'ready'); },
