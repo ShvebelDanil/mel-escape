@@ -13,6 +13,7 @@ import * as PWR from './powerups.js';
 import * as RLT from './roulette.js';
 import * as LB from './leaderboard.js';
 import * as I18N from './i18n.js';
+import * as QLT from './quality.js';
 
 const COMBO_WINDOW = 1.3;
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
@@ -428,10 +429,10 @@ function loop(t) {
   // Рисуем один раз и потом только если поменялся размер холста (поворот экрана, адресная строка).
   if (G.state === 'paused') {
     const cv = GFX.renderer.domElement;
-    if (pausedW !== cv.width || pausedH !== cv.height) { pausedW = cv.width; pausedH = cv.height; GFX.renderer.render(GFX.scene, GFX.camera); }
+    if (pausedW !== cv.width || pausedH !== cv.height) { pausedW = cv.width; pausedH = cv.height; GFX.render(); }
     return;
   }
-  if (G.state === 'shop') { SHOP.update(dt); GFX.renderer.render(GFX.scene, GFX.camera); tuneFrame(dt); return; }
+  if (G.state === 'shop') { SHOP.update(dt); GFX.render(); tuneFrame(dt); return; }
   if (G.state === 'run') {
     G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
     player.groundY = getGroundY();
@@ -474,7 +475,7 @@ function loop(t) {
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
   PWR.faceCamera();         // по той же причине здесь, а не в PWR.update()
-  GFX.renderer.render(GFX.scene, GFX.camera);
+  GFX.render();
   tuneFrame(dt);
 }
 
@@ -569,6 +570,16 @@ function bindInput() {
     });
   };
   volSlider('musicVol', 'musicVol'); volSlider('soundVol', 'soundVol');
+  // Уровень графики: три кнопки-вкладки в окне настроек (source/quality.js). Окно открывается только
+  // из меню и паузы — пересборка шейдеров при смене уровня (доля секунды) не попадёт в забег.
+  // На паузе кадр перерисовывается лишь при смене размера холста — pausedW = -1 просит один новый кадр.
+  const gfxBtns = document.querySelectorAll('#gfxSeg .tab-btn');
+  const syncGfxUI = () => {
+    for (const b of gfxBtns) b.dataset.active = b.dataset.q === QLT.level ? '1' : '0';
+    U.show(U.$('gfxNote'), GFX.needsRestart());
+  };
+  for (const b of gfxBtns) b.addEventListener('click', act(() => { if (QLT.setLevel(b.dataset.q)) { GFX.applyQuality(); pausedW = -1; } syncGfxUI(); }));
+  syncGfxUI();
 }
 
 let initStarted = false;
@@ -598,6 +609,7 @@ function init() {
     setupMenuScene();   // возвращаем новой модели позу и разворот меню; окно рекордов при этом не закрывается
   } });
   AUD.initAudio();
+  GFX.applyQuality();     // после сборки всей сцены: уровню графики нужны уже созданные пол/стены/свет
   bindInput(); setupMenuScene(); requestAnimationFrame(loop);
   const t0 = performance.now();
   setTimeout(() => { U.show(U.UI.loading, false); showMenu(); U.Sdk.loadingReady(); }, Math.max(0, 500 - (performance.now() - t0)));

@@ -108,7 +108,7 @@ const nodePool = { magnet: [], boots: [], double: [] };
 function buildNode(t) {
   mats(t);
   const g = new THREE.Group();
-  const halo = new THREE.Mesh(GFX.GPlane(PU_HALO, PU_HALO), t.haloMat); halo.renderOrder = 2; g.add(halo);
+  const halo = new THREE.Mesh(GFX.GPlane(PU_HALO, PU_HALO), t.haloMat); halo.renderOrder = 2; GFX.glow(halo); g.add(halo);   // в High ореол светится
   const ic = new THREE.Mesh(GFX.GPlane(PU_ICON, PU_ICON), t.icMat); ic.position.z = 0.012; ic.renderOrder = 3; g.add(ic);
   return g;
 }

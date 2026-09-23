@@ -50,7 +50,7 @@ export const BASE_SPEED = 11, MAX_SPEED = 27, ACCEL = 0.24;
 export const SPAWN_AHEAD = 170, DESPAWN_BEHIND = 14;
 export const ROLL_TIME = 0.62;
 export const HIT_W = 0.34, HIT_Z = 0.36, PLATFORM_TOL = 0.28;
-export const FOG_NEAR = 34, FOG_FAR = 130, CAM_FAR = 140; // дальше FOG_FAR туман уже полностью глухой — рисовать там нечего
+// Туман и дальняя плоскость камеры зависят от уровня графики — см. fogNear/fogFar в source/quality.js.
 export const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
 export const CLASS_Z0 = -2.6, CLASS_Z1 = -11.8;
 export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;

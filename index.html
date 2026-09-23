@@ -510,6 +510,13 @@
   .vol-slider::-moz-range-progress { height:8px; border-radius:6px; background:#ffd94a; }
   .vol-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4); }
 
+  /* Уровень графики: та же плитка в два ряда, что и громкость, а переключатель — копия вкладок
+     магазина (#shopTabs / .tab-btn), только растянутый на всю ширину плитки. */
+  .set-row.gfx-row { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 12px; }
+  .gfx-seg { display:flex; gap:4px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.16); border-radius:14px; padding:4px; }
+  .gfx-seg .tab-btn { flex:1 1 0; min-width:0; padding:8px 4px; }
+  .gfx-note { font-size:clamp(11px,3vw,13px); color:#b8ccbe; line-height:1.35; }
+
   /* ===== Задания ===== */
   /* min-height:0 обязателен: без него flex-элемент не даёт себя сжать и список не скроллится,
      а вылезает за пределы панели на маленьких экранах. */
@@ -971,6 +978,17 @@
       <div class="set-row ui-tile vol-row">
         <div class="vol-head"><span class="n" data-i18n="settings.sound">Звуки</span><span class="vol-val">100%</span></div>
         <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="settings.soundAria" aria-label="Громкость звуков"></div>
+      </div>
+      <!-- Уровень графики (source/quality.js). Активную кнопку (data-active) и подсказку
+           про перезапуск проставляет syncGfxUI в main.js. -->
+      <div class="set-row ui-tile gfx-row">
+        <span class="n" data-i18n="settings.graphics">Графика</span>
+        <div class="gfx-seg" id="gfxSeg">
+          <button class="tab-btn" data-q="low" data-i18n="settings.gfxLow">Низкая</button>
+          <button class="tab-btn" data-q="medium" data-i18n="settings.gfxMedium">Средняя</button>
+          <button class="tab-btn" data-q="high" data-i18n="settings.gfxHigh">Высокая</button>
+        </div>
+        <span class="gfx-note hidden" id="gfxNote" data-i18n="settings.gfxRestart">Часть настроек применится после перезапуска игры</span>
       </div>
     </div>
   </div>
