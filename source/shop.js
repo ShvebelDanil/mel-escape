@@ -17,6 +17,8 @@ let dragActive = false, dragX = 0, previewYaw = 0, adPending = false;
 // Ключ прогресса роликов в сейве: id скина и питомца могут совпасть, поэтому префикс.
 const adKey = (m, id) => (m === 'pets' ? 'pet:' : 'skin:') + id;
 const adSeen = key => U.save.adProgress[key] | 0;
+// Текущая цена в пузыриках: каждый досмотренный за вещь ролик снижает её (ADR.adPrice).
+const priceNow = s => ADR.adPrice(s.price, adSeen(adKey(mode, s.id)));
 // Вещь можно взять за рекламу, если она вообще продаётся: бесплатное и секретное мимо.
 const adBuyable = (s, owned, locked) => !owned && !locked && !s.secret && s.price > 0;
 
@@ -122,13 +124,14 @@ function action() {
     if (c.select(s.id)) refresh();
     return;
   }
-  if (U.save.currency < s.price) {
+  const price = priceNow(s);
+  if (U.save.currency < price) {
     // Русский требует разных падежей («скина»/«питомца»), поэтому это две отдельные строки словаря, а не подстановка.
-    showModal('err', t('shop.noMoneyTitle'), t(mode === 'pets' ? 'shop.noMoneyPet' : 'shop.noMoneySkin', { n: s.price - U.save.currency }), t('shop.gotIt'));
+    showModal('err', t('shop.noMoneyTitle'), t(mode === 'pets' ? 'shop.noMoneyPet' : 'shop.noMoneySkin', { n: price - U.save.currency }), t('shop.gotIt'));
     U.Sound.denied();
     return;
   }
-  if (c.buy(s.id)) {
+  if (c.buy(s.id, price)) {
     // Куплено за пузырики — недосмотренные ролики за эту же вещь больше не нужны.
     delete U.save.adProgress[adKey(mode, s.id)];
     U.persistSave();
@@ -139,8 +142,8 @@ function action() {
   }
 }
 
-// Второй путь к вещи: досмотреть N роликов. N = цена / награда за ролик в меню,
-// см. ADR.adsFor — при правке цены или AD_REWARD число пересчитывается само.
+// Второй путь к вещи: досмотреть N роликов. N считает ADR.adsFor от цены вещи —
+// при правке цены число пересчитывается само.
 function watchForItem() {
   if (adPending) return;
   const c = cat(), s = c.list[index];
@@ -187,6 +190,17 @@ function renderAdBtn(s, owned, locked) {
   b.dataset.busy = adPending ? '1' : '0';
 }
 
+// Строка бафа питомца под описанием. Проценты считаются из PT.distK/bottleK,
+// поэтому правка множителя в pets.js сразу меняет и текст. \n переносится CSS-ом (pre-line у #skinDesc).
+const pct = k => Math.round((k - 1) * 100);
+function petBonusText(p) {
+  let s = '';
+  const d = PT.distK(p), b = PT.bottleK(p);
+  if (d !== 1) s += '\n' + t('pet.bonusDist', { n: pct(d) });
+  if (b !== 1) s += '\n' + t('pet.bonusBottles', { n: pct(b) });
+  return s;
+}
+
 function showModal(kind, title, text, btn) {
   modalOpen = true;
   const m = U.UI.shopModal; if (!m) return;
@@ -212,13 +226,13 @@ function refresh() {
   if (U.UI.shopTabSkins) U.UI.shopTabSkins.dataset.active = mode === 'skins' ? '1' : '0';
   if (U.UI.shopTabPets) U.UI.shopTabPets.dataset.active = mode === 'pets' ? '1' : '0';
   if (U.UI.skinName) U.UI.skinName.textContent = locked ? '???' : t(s.nameKey);
-  if (U.UI.skinDesc) U.UI.skinDesc.textContent = locked ? t('shop.secretDesc') : t(s.descKey);
+  if (U.UI.skinDesc) U.UI.skinDesc.textContent = locked ? t('shop.secretDesc') : t(s.descKey) + (mode === 'pets' ? petBonusText(s) : '');
   const btn = U.UI.skinAction;
   if (btn) {
     if (locked) { btn.textContent = t('shop.locked'); btn.dataset.state = 'locked'; }
     else if (selected) { btn.textContent = t('shop.selected'); btn.dataset.state = 'selected'; }
     else if (owned) { btn.textContent = t('shop.select'); btn.dataset.state = 'select'; }
-    else if (U.save.currency >= s.price) { btn.textContent = t('shop.buy'); btn.dataset.state = 'buy'; }
+    else if (U.save.currency >= priceNow(s)) { btn.textContent = t('shop.buy'); btn.dataset.state = 'buy'; }
     else { btn.textContent = t('shop.buy'); btn.dataset.state = 'locked'; }
   }
   const dots = U.UI.skinDots;
@@ -238,11 +252,18 @@ function renderPriceRow(s, owned, locked) {
   if (s.secret) { row.dataset.state = 'free'; row.textContent = t('shop.byQuests'); return; }
   if (s.price === 0) { row.dataset.state = 'free'; row.textContent = t('shop.free'); return; }
   if (owned) { row.dataset.state = 'free'; row.textContent = t('shop.owned'); return; }
-  row.dataset.state = U.save.currency >= s.price ? 'price' : 'locked';
+  const price = priceNow(s);
+  row.dataset.state = U.save.currency >= price ? 'price' : 'locked';
   const img = document.createElement('img');
   img.src = TEX.url('bottle');
   row.appendChild(img);
-  row.appendChild(document.createTextNode(' ' + s.price));
+  // Цена уже снижена роликами — показываем старую зачёркнутой рядом с новой.
+  if (price < s.price) {
+    const old = document.createElement('s');
+    old.textContent = s.price;
+    row.appendChild(old);
+  }
+  row.appendChild(document.createTextNode(' ' + price));
 }
 
 export function update(dt) {

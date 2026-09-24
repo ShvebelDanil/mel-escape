@@ -14,11 +14,26 @@ import * as RLT from './roulette.js';
 import * as LB from './leaderboard.js';
 import * as I18N from './i18n.js';
 import * as QLT from './quality.js';
+import * as OVER from './overscreen.js';
 
 const COMBO_WINDOW = 1.3;
+// Заяц (distK): бонусные метры начисляются не размазанно, а порциями по METER_BONUS_STEP —
+// каждые STEP / (distK − 1) м реального пути (при 1.25 — раз в 100 м, 4–9 с хода). Слева от
+// счётчика всплывает «+25 м» и летит в него; когда долетает (через METER_FLY с), к счёту
+// прибавляется ровно 25 и счётчик вспыхивает фиолетовым. В среднем те же +25%, но прибавку видно.
+// Число в разметке #meterBonus и длительность анимации meterFly в index.html — те же.
+const METER_BONUS_STEP = 25, METER_FLY = 0.62;
+let meterStep = 0, meterNext = 0, meterPendT = 0;   // шаг и следующая отметка dist; таймер полёта
+function landMeterBonus() { meterPendT = 0; G.score += METER_BONUS_STEP; U.replayCss(U.UI.score); }
 // bankedDist/runBanked — близнецы bankedBottles для системы заданий: метры и сам факт забега
 // записываются в сейв ровно один раз, даже если caught() случился дважды (смерть → ревайв → смерть).
-export const G = { state: 'loading', speed: U.BASE_SPEED, dist: 0, runTime: 0, bottles: 0, bankedBottles: 0, bankedDist: 0, runBanked: false, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveCount: 0, combo: 0, comboT: 0 };
+// dist — реальный путь (по нему level.js наращивает сложность и расписание паверапов),
+// score — засчитанные игроку метры (dist + порции бонуса зайца, см. METER_BONUS_STEP): их видят HUD, рекорд, лидерборд и задания.
+// bottleAcc — пузырики с дробной частью (× bottleK питомца), bottles = его целая часть.
+// distK/bottleK фиксируются в resetRun(): питомца можно сменить только в меню, между забегами.
+// best0 — рекорд на старте забега: по нему экран итогов решает «новый рекорд» за ВЕСЬ забег,
+// а не за последнюю жизнь после воскрешения.
+export const G = { state: 'loading', best0: 0, speed: U.BASE_SPEED, dist: 0, score: 0, distK: 1, bottleK: 1, bottleAcc: 0, runTime: 0, bottles: 0, bankedBottles: 0, bankedDist: 0, runBanked: false, nextZ: 0, camBlend: 0, shake: 0, overT: 0, overShown: false, reviveCount: 0, combo: 0, comboT: 0 };
 export const player = { node: null, lane: 1, x: 0, y: 0, z: 0, vy: 0, grounded: true, groundY: 0, rolling: 0, invuln: 0, runPhase: 0, squash: 0, spinDir: 0, spinT: 0, spinDur: U.ROLL_TIME };
 export const granny = { node: null, zOff: -9.2, targetZOff: -9.2, closeT: 0, phase: 0, catchMode: false };
 export const pet = { node: null, id: '', x: 0, y: 0, z: 0, vy: 0, grounded: true, rolling: 0, lane: 1, phase: 0, headingY: 0, voiceT: 0 };
@@ -128,21 +143,22 @@ function stumble(o) {
 function caught() {
   G.state = 'over'; G.overT = 0; G.overShown = false; granny.catchMode = true; granny.targetZOff = -0.85; G.shake = 0.8;
   U.Sound.crash(); U.replayCss(U.UI.flash); ENT.burst(player.x, player.y + 1.2, player.z, '#b0451f', 8, 3);
-  U.Sdk.gameplayStop(); const m = Math.floor(G.dist); const isRecord = m > U.save.best;
+  if (meterPendT > 0) landMeterBonus();   // «+25 м» уже показан — не теряем его, если поймали в полёте
+  U.Sdk.gameplayStop(); const m = Math.floor(G.score); const isRecord = m > U.save.best;
   // Рекорд уходит в таблицу лидеров только когда он действительно обновился: setLeaderboardScore
   // с уже записанным результатом просто тратит лимит запросов (сам LB.submit это тоже проверяет).
   if (isRecord) { U.save.best = m; LB.submit(m); }
   const gained = G.bottles - G.bankedBottles; U.save.bottles += gained; U.save.currency += gained; G.bankedBottles = G.bottles;
   U.save.totalDist += m - G.bankedDist; G.bankedDist = m;
   if (!G.runBanked) { G.runBanked = true; U.save.runs++; }
-  U.persistSave(); if (U.UI.over) U.UI.over.dataset.record = isRecord ? '1' : '0';
+  U.persistSave();
   syncQuests(); // прогресс уже в сейве — live-прибавка обнуляется тут же
 }
 
 // Мост между забегом и quests.js: отдаёт ещё не записанный в сейв прогресс текущего забега
 // и сразу проверяет задания. Дёргается на смене метра и на сборе пузырика — временных
 // объектов не создаёт, тяжёлая работа внутри check() идёт только в момент выполнения задания.
-function syncQuests() { QST.setLive(Math.floor(G.dist) - G.bankedDist, G.bottles - G.bankedBottles); return QST.check(); }
+function syncQuests() { QST.setLive(Math.floor(G.score) - G.bankedDist, G.bottles - G.bankedBottles); return QST.check(); }
 
 function updateMenuStats() { if (U.UI.menuBest) U.UI.menuBest.textContent = U.save.best; if (U.UI.menuBottles) U.UI.menuBottles.textContent = U.save.bottles; SHOP.refreshCurrency(); }
 // QST.check() перед updateMenuStats(): покупка скина/питомца могла закрыть задание,
@@ -223,8 +239,11 @@ function animatePetMenuIdle(dt) {
   n.tailPivot.rotation.y = Math.sin(pet.phase * 0.5) * 0.25;
 }
 function diaryTaken(on) { deskScene.diary.visible = !on; player.node.diary.visible = on; }
-function showCombo() {
+// extra — сколько пузыриков сверх одного дал этот подбор (Котость, bottleK): дробный бонус копится
+// в G.bottleAcc, и когда он дозревает до целого, под комбо всплывает фиолетовое «+1».
+function showCombo(extra) {
   G.combo++; G.comboT = COMBO_WINDOW;
+  if (extra > 0) U.replayCss(U.UI.comboBonus);
   const el = U.UI.comboText; if (!el) return;
   const span = el.querySelector('span'); if (span) span.textContent = '×' + G.combo;
   el.style.transform = `translate(${U.rand(-16, 16).toFixed(0)}px, ${U.rand(-12, 12).toFixed(0)}px)`;
@@ -232,6 +251,7 @@ function showCombo() {
 }
 function resetPose() { const n = player.node; n.pivot.rotation.x = 0; n.inner.rotation.set(0, 0, 0); n.root.rotation.set(0, 0, 0); n.headG.rotation.x = 0; n.inner.visible = true; player.spinDir = 0; player.spinT = 0; }
 function resetRun() {
+  OVER.close();           // ноды Мэла и питомца возвращаются из студии экрана итогов до сброса поз
   GFX.rollRunPics();      // вид за окном разыгрывается на забег — до перегенерации декора ниже
   for (let i = ENT.activeObstacles.length - 1; i >= 0; i--) ENT.releaseObstacle(i);
   ENT.resetPending();
@@ -239,10 +259,14 @@ function resetRun() {
   segments.forEach((seg, i) => { seg.position.z = i * U.SEG_LEN; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg, i === 0 ? U.CLASS_Z0 + 3 : undefined); });
   player.lane = 1; player.x = 0; player.y = 0; player.vy = 0; player.z = 0; player.groundY = 0; player.grounded = true; player.rolling = 0; player.invuln = 0; player.squash = 0;
   resetPose(); player.node.inner.scale.set(1, 1, 1); player.node.inner.position.y = -0.92;
-  G.speed = U.BASE_SPEED; G.dist = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveCount = 0; G.overShown = false; G.shake = 0;
+  const pt = PT.findPet(PT.selectedId()); G.distK = PT.distK(pt); G.bottleK = PT.bottleK(pt);
+  G.speed = U.BASE_SPEED; G.dist = 0; G.score = 0; G.bottleAcc = 0; G.runTime = 0; G.bottles = 0; G.bankedBottles = 0; G.bankedDist = 0; G.runBanked = false; G.nextZ = 42; G.reviveCount = 0; G.overShown = false; G.shake = 0;
   granny.closeT = 0; granny.catchMode = false;
   G.combo = 0; G.comboT = 0; if (U.UI.comboText) U.UI.comboText.classList.remove('on'); GFX.resetResolution();
+  meterStep = G.distK > 1 ? METER_BONUS_STEP / (G.distK - 1) : 0; meterNext = meterStep; meterPendT = 0;
+  for (const el of [U.UI.comboBonus, U.UI.meterBonus, U.UI.score]) if (el) el.classList.remove('on');
   PWR.reset();   // баффы и пикапы живут только внутри забега
+  PWR.setPetBuff(pt.hud || '');   // плашка вечного бафа питомца в углу HUD
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
 }
@@ -258,14 +282,17 @@ function setupMenuScene() {
   Object.assign(intro, { t: 0, grab: false, alert: false, hop: false, turn: false, faceY: Math.PI });
 }
 function startIntro() { G.state = 'intro'; G.camBlend = 0; intro.t = 0; intro.runStartZ = 0; QST.closeAll(); U.screens('skipIntroBtn'); U.Sound.ensure(); U.Sound.setMusic('run'); }
+// Точка отсчёта для экрана итогов: прогресс заданий и рекорд на момент старта забега.
+function markRunStart() { G.best0 = U.save.best; QST.snapshotRun(); }
 function beginRun() {
+  markRunStart();
   G.state = 'run'; intro.runStartZ = player.z; G.camBlend = 1; G.speed = U.BASE_SPEED; granny.zOff = granny.node.root.position.z - player.z; granny.targetZOff = -9.2;
   syncPetBehindPlayer();
   U.show(U.UI.skipIntroBtn, false); U.show(U.UI.hud, true);
   U.Sound.ensure(); U.Sdk.gameplayStart();
 }
 function skipIntro() { player.z = -0.4; player.y = 0; player.vy = 0; player.grounded = true; intro.faceY = 0; intro.turn = true; intro.grab = true; intro.alert = true; diaryTaken(true); granny.node.root.position.set(U.GRANNY_INTRO_X, 0, -3.2); beginRun(); }
-function quickRestart() { QST.closeAll(); resetRun(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
+function quickRestart() { QST.closeAll(); resetRun(); markRunStart(); player.z = 0; diaryTaken(true); granny.zOff = -4.5; granny.targetZOff = -9.2; granny.node.root.position.set(0, 0, -4.5); G.state = 'run'; G.camBlend = 1; camSnap = true; syncPetBehindPlayer(); U.screens('hud'); U.Sound.ensure(); U.Sound.setMusic('run'); U.Sdk.gameplayStart(); }
 function updateIntro(dt) {
   intro.t += dt; const t = intro.t, n = player.node;
   if (t < 1.1) {
@@ -292,22 +319,24 @@ function updateIntro(dt) {
 let pausedW = -1, pausedH = -1; // размер холста на последнем отрисованном кадре паузы (см. loop)
 function pauseRun() { if (G.state !== 'run') return; G.state = 'paused'; pausedW = -1; U.show(U.UI.pause, true); U.Sound.pauseAll(); U.Sdk.gameplayStop(); }
 function resumeRun() { if (G.state !== 'paused') return; QST.closeAll(); G.state = 'run'; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.Sdk.gameplayStart(); }
+// Экран смерти (source/overscreen.js): сначала окно воскрешения с отсчётом, пока попытки не
+// кончились; дальше — итоги забега. Всё, что нужно итогам, к этому моменту уже в сейве (caught()).
 function showOverScreen() {
-  G.overShown = true; const m = Math.floor(G.dist);
-  if (U.UI.overScore) U.UI.overScore.textContent = m; if (U.UI.overBottles) U.UI.overBottles.textContent = G.bottles;
-  U.show(U.UI.newRecord, U.UI.over && U.UI.over.dataset.record === '1'); U.screens('over');
-  const canRevive = G.reviveCount < REVIVE_MAX;
-  U.show(U.UI.reviveBtn, canRevive);
-  if (canRevive) {
-    if (U.UI.reviveCost) U.UI.reviveCost.textContent = reviveCost();
-    if (U.UI.reviveBtn) U.UI.reviveBtn.classList.toggle('locked', U.save.currency < reviveCost());
-  }
+  G.overShown = true;
+  if (G.reviveCount < REVIVE_MAX) OVER.showRevive(reviveCost(), U.save.currency >= reviveCost());
+  else openStats();
+}
+function openStats() {
+  resetPose();
+  const m = Math.floor(G.score);
+  OVER.showStats({ meters: m, bottles: G.bottles, best: U.save.best, record: m > G.best0, currency: U.save.currency, quests: QST.runProgress() }, player.node, pet.node);
 }
 // Воскрешение за пузырики: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
 // сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, пузырики И
 // паверапы — иначе игрок может ожить внутри объекта, который сам не убивает, но выглядит багом),
 // чтобы не влететь в то, от чего он только что умер, и короткая неуязвимость на случай, если рядом ещё что-то есть.
 function revive() {
+  OVER.close();
   G.reviveCount++; U.screens('hud'); G.state = 'run';
   const z0 = player.z - 6, z1 = player.z + Math.max(50, G.speed * 2.6);
   ENT.clearObstacles(z0, z1); ENT.clearCoins(z0, z1); PWR.clearRange(z0, z1);
@@ -318,7 +347,7 @@ function revive() {
 
 let lastScore = -1, scoreNum = null;
 function updateScoreHud(force) {
-  const m = Math.floor(G.dist);
+  const m = Math.floor(G.score);
   if (m === lastScore && !force) return;
   lastScore = m; syncQuests(); if (!U.UI.score) return;
   // раньше здесь был innerHTML — браузер пересобирал разметку ~20 раз в секунду; теперь меняется только текст
@@ -434,7 +463,10 @@ function loop(t) {
   }
   if (G.state === 'shop') { SHOP.update(dt); GFX.render(); tuneFrame(dt); return; }
   if (G.state === 'run') {
-    G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
+    G.speed = Math.min(U.MAX_SPEED, G.speed + U.ACCEL * dt); G.runTime += dt; G.dist += G.speed * dt; G.score += G.speed * dt; player.z += G.speed * dt; player.x = U.damp(player.x, U.LANES[player.lane], 11, dt);
+    // Бонус зайца: отметка пройдена — запускаем полёт «+25 м», метры прибавятся при «приземлении».
+    if (meterStep > 0 && G.dist >= meterNext) { meterNext += meterStep; meterPendT = METER_FLY; U.replayCss(U.UI.meterBonus); }
+    if (meterPendT > 0 && (meterPendT -= dt) <= 0) landMeterBonus();
     player.groundY = getGroundY();
     if (player.y > player.groundY || player.vy > 0) {
       player.grounded = false; player.vy -= U.GRAVITY * dt; player.y += player.vy * dt;
@@ -457,7 +489,7 @@ function loop(t) {
     for (let i = ENT.activeCoins.length - 1; i >= 0; i--) {
       const c = ENT.activeCoins[i]; if (c.z < player.z - U.DESPAWN_BEHIND) { ENT.releaseCoin(i); continue; }
       const dy = pcy - c.y;                                   // >0 — пузырик ниже центра игрока
-      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && dy < reachDown && dy > -1.2) { G.bottles++; if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(); syncQuests(); }
+      if (Math.abs(player.z - c.z) < 0.95 && Math.abs(player.x - c.x) < 0.8 && dy < reachDown && dy > -1.2) { const was = G.bottles; G.bottleAcc += G.bottleK; G.bottles = Math.floor(G.bottleAcc + 1e-9); if (U.UI.bottleNum) U.UI.bottleNum.textContent = G.bottles; U.Sound.coin(); ENT.burst(c.x, c.y, c.z, '#ffe36e', 3, 1.8); ENT.releaseCoin(i); showCombo(G.bottles - was - 1); syncQuests(); }
     }
     updateCollisions(); LVL.fillSpawns(); updateScoreHud();
     for (const seg of segments) { if (seg.position.z + U.SEG_LEN / 2 < player.z - 16) { seg.position.z += U.SEG_LEN * U.SEG_COUNT; seg.updateMatrix(); GFX.randomizeSegmentDecor(seg); } }
@@ -466,16 +498,20 @@ function loop(t) {
   } else if (G.state === 'over') {
     G.overT += dt; G.speed = Math.max(0, G.speed - 30 * dt); player.z += G.speed * dt;
     if (player.y > player.groundY) { player.vy -= U.GRAVITY * dt; player.y = Math.max(player.groundY, player.y + player.vy * dt); if (player.y <= player.groundY) { player.vy = 0; player.grounded = true; } }
-    player.node.root.rotation.z = Math.sin(G.overT * 9) * 0.16 * Math.max(0, 1 - G.overT); player.node.inner.rotation.x = U.damp(player.node.inner.rotation.x, -0.35, 4, dt);
+    // в окне итогов нода Мэла стоит в студии — позой там управляет overscreen.js
+    if (!OVER.inStats()) { player.node.root.rotation.z = Math.sin(G.overT * 9) * 0.16 * Math.max(0, 1 - G.overT); player.node.inner.rotation.x = U.damp(player.node.inner.rotation.x, -0.35, 4, dt); }
     if (G.overT > 1.15 && !G.overShown) showOverScreen();
+    OVER.update(dt);
   } else if (G.state === 'menu') { G.camBlend = Math.max(0, G.camBlend - dt * 1.6); } else if (G.state === 'intro') { updateIntro(dt); }
   ENT.pumpObstacles(player.z); // дальние препятствия входят в сцену только у границы тумана
-  if (G.state === 'run' || G.state === 'over') updatePet(dt); else if (G.state === 'menu') animatePetMenuIdle(dt);
-  animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
+  const inStudio = G.state === 'over' && OVER.inStats();
+  if ((G.state === 'run' || G.state === 'over') && !inStudio) updatePet(dt); else if (G.state === 'menu') animatePetMenuIdle(dt);
+  if (!inStudio) animatePlayer(dt); if (G.state !== 'intro') animateGranny(dt); ENT.updateParticles(dt);
   if (G.state === 'intro') updateIntroCamera(dt); else updateCamera(dt);
   ENT.updateCoins(t / 300); // квады бутылок разворачиваются по камере — строго после updateCamera
   PWR.faceCamera();         // по той же причине здесь, а не в PWR.update()
   GFX.render();
+  if (inStudio) OVER.renderStage();   // Мэл и питомец в окне итогов — второй, маленький проход
   tuneFrame(dt);
 }
 
@@ -491,7 +527,7 @@ function bindInput() {
       // Открытая модалка меню (настройки/задания/заглушка) перехватывает Escape и блокирует Enter:
       // кликами она недоступна (её фон перекрывает меню), а вот с клавиатуры забег стартовал бы прямо под ней.
       case 'Escape': case 'KeyP': if (QST.modalOpen()) QST.closeAll(); else if (G.state === 'run') pauseRun(); else if (G.state === 'paused') resumeRun(); else if (G.state === 'shop') exitShop(); break;
-      case 'Enter': if (QST.modalOpen()) break; if (G.state === 'menu') startIntro(); else if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart, true); break;
+      case 'Enter': if (QST.modalOpen()) break; if (G.state === 'menu') startIntro(); else if (G.state === 'over' && OVER.inStats()) U.maybeInterstitial(quickRestart, true); break;
     }
   });
   const gameEl = U.UI.game;
@@ -540,9 +576,9 @@ function bindInput() {
   on('pauseMenuBtn', act(() => { if (G.state !== 'paused') return; U.Sound.resumeAll(); U.show(U.UI.pause, false); U.maybeInterstitial(showMenu); }));
   // Уход с экрана смерти — единственный выход после каждого проигрыша, поэтому здесь
   // межстраничная запускается принудительно (force), без нашего кулдауна в 75 секунд.
-  on('againBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(quickRestart, true); })); on('overMenuBtn', act(() => { if (G.state === 'over' && G.overShown) U.maybeInterstitial(showMenu, true); }));
+  on('againBtn', act(() => { if (G.state === 'over' && OVER.inStats()) U.maybeInterstitial(quickRestart, true); })); on('overMenuBtn', act(() => { if (G.state === 'over' && OVER.inStats()) U.maybeInterstitial(showMenu, true); }));
   on('reviveBtn', act(() => {
-    if (G.state !== 'over' || G.reviveCount >= REVIVE_MAX) return;
+    if (G.state !== 'over' || !OVER.inRevive() || G.reviveCount >= REVIVE_MAX) return;
     const cost = reviveCost();
     if (U.save.currency < cost) { U.Sound.denied(); return; }
     U.save.currency -= cost; U.persistSave();
@@ -594,9 +630,10 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon', 'overBalanceIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
+  OVER.initOverScreen({ onReviveEnd: openStats });
   PWR.initPowerups();
   ADR.initAdReward();
   RLT.initRoulette();

@@ -94,10 +94,12 @@ export function secretShot(open) {
   return shots[k];
 }
 
-export function buy(id) {
+// cost — цена со скидкой за досмотренные ролики (ADR.adPrice в shop.js); без него — полная.
+export function buy(id, cost) {
   const s = findSkin(id);
-  if (s.secret || isOwned(id) || U.save.currency < s.price) return false;
-  U.save.currency -= s.price;
+  const c = cost == null ? s.price : cost;
+  if (s.secret || isOwned(id) || U.save.currency < c) return false;
+  U.save.currency -= c;
   U.save.ownedSkins.push(id);
   U.persistSave();
   return true;

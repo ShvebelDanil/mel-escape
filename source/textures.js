@@ -37,6 +37,9 @@ export const MANIFEST = {
   magnet: { file: 'magnet', mips: true, aniso: false },
   boots: { file: 'boots', mips: true, aniso: false },
   double: { file: 'double', mips: true, aniso: false },
+  // Иконки вечного бафа питомца — только <img> в HUD (powerups.js:setPetBuff), в GPU не грузятся.
+  catPowerup: { file: 'cat_powerup' },
+  bunnyPowerup: { file: 'bunny_powerup' },
 };
 
 let ext = '.png';            // выбирается один раз в detectFormat()

@@ -109,6 +109,8 @@ const DICT = {
     'over.reviveFor': 'Восстать за',
     'over.again': '▶ Ещё раз',
     'over.menu': 'В меню',
+    'over.best': 'Рекорд',
+    'over.balance': 'Всего пузыриков',
 
     'modal.close': 'Закрыть',
     'modal.ok': 'Ок',
@@ -233,6 +235,8 @@ const DICT = {
     'pet.catost.desc': 'Маленький вкусненький малышочек.',
     'pet.rabbitBurmaldaets.name': 'Заяц Бурмалдаец',
     'pet.rabbitBurmaldaets.desc': 'В разные периоды времени немного меняется.',
+    'pet.bonusDist': 'Бонус: +{n}% к метрам за забег.',
+    'pet.bonusBottles': 'Бонус: +{n}% к пузырикам за забег.',
 
     'yell.1': 'СТОЙ, ХУЛИГАН!',
     'yell.2': 'ПОПАЛСЯ!',
@@ -291,6 +295,8 @@ const DICT = {
     'over.reviveFor': 'Revive for',
     'over.again': '▶ Play again',
     'over.menu': 'Main menu',
+    'over.best': 'Best',
+    'over.balance': 'Total bubbles',
 
     'modal.close': 'Close',
     'modal.ok': 'OK',
@@ -415,6 +421,8 @@ const DICT = {
     'pet.catost.desc': 'A tiny tasty little one.',
     'pet.rabbitBurmaldaets.name': 'Burmalda Hare',
     'pet.rabbitBurmaldaets.desc': 'Changes a little from time to time.',
+    'pet.bonusDist': 'Bonus: +{n}% meters per run.',
+    'pet.bonusBottles': 'Bonus: +{n}% bubbles per run.',
 
     'yell.1': 'STOP RIGHT THERE!',
     'yell.2': 'GOTCHA!',
@@ -473,6 +481,8 @@ const DICT = {
     'over.reviveFor': 'Dirilme bedeli',
     'over.again': '▶ Tekrar oyna',
     'over.menu': 'Ana menü',
+    'over.best': 'Rekor',
+    'over.balance': 'Toplam baloncuk',
 
     'modal.close': 'Kapat',
     'modal.ok': 'Tamam',
@@ -597,6 +607,8 @@ const DICT = {
     'pet.catost.desc': 'Minik, tatlı bir ufaklık.',
     'pet.rabbitBurmaldaets.name': 'Burmalda Tavşanı',
     'pet.rabbitBurmaldaets.desc': 'Zaman zaman biraz değişir.',
+    'pet.bonusDist': 'Bonus: koşu başına +%{n} metre.',
+    'pet.bonusBottles': 'Bonus: koşu başına +%{n} baloncuk.',
 
     'yell.1': 'DUR BAKALIM, HAYLAZ!',
     'yell.2': 'YAKALADIM!',

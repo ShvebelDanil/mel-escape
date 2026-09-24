@@ -28,7 +28,8 @@ export const QUESTS = [
 ];
 
 // Вставка иконки из общего SVG-спрайта index.html (одноцветная, красится через currentColor).
-const ico = id => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + id + '"/></svg>';
+// Экспорт — для карточек заданий на экране итогов забега (source/overscreen.js).
+export const ico = id => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + id + '"/></svg>';
 
 const TOAST_MS = 3200;   // сколько уведомление висит до начала растворения
 const TOAST_OUT = 400;   // длительность анимации ухода (.quest-toast.out в index.html)
@@ -47,6 +48,29 @@ export function doneCount() {
   return n;
 }
 export const allDone = () => doneCount() >= QUESTS.length;
+// Прогресс для показа: целое число от 0 до цели (сверх цели полоса не растёт).
+const shownProgress = q => Math.min(Math.max(0, q.progress() | 0), q.goal);
+
+// ===== Прогресс за один забег (экран итогов, source/overscreen.js) =====
+// Снимок берётся в момент старта забега (main.js: beginRun / quickRestart), а не при сборке меню:
+// между ними игрок может купить скин или сыграть в мини-игру, и это не должно выглядеть прогрессом забега.
+// Массивы заводятся один раз по длине реестра, снимок только перезаписывает числа.
+const runFrom = QUESTS.map(() => 0), runWasDone = QUESTS.map(() => false);
+export function snapshotRun() {
+  for (let i = 0; i < QUESTS.length; i++) { runFrom[i] = shownProgress(QUESTS[i]); runWasDone[i] = isDone(QUESTS[i].id); }
+}
+// Задания, которые продвинулись с последнего snapshotRun(): { q, from, to, done }.
+// done — задание закрылось именно в этом забеге (закрытые раньше не показываем вовсе).
+// Зовётся один раз на открытие окна итогов, поэтому новый массив здесь допустим.
+export function runProgress() {
+  const out = [];
+  for (let i = 0; i < QUESTS.length; i++) {
+    if (runWasDone[i]) continue;
+    const q = QUESTS[i], to = shownProgress(q);
+    if (to > runFrom[i]) out.push({ q, from: runFrom[i], to, done: isDone(q.id) });
+  }
+  return out;
+}
 
 // Приз за полный комплект заданий — секретный скин (SKINS[...].secret в source/skins.js).
 // Выдаётся молча и только один раз; true — если выдали прямо сейчас.
@@ -122,7 +146,7 @@ export function render() {
   list.innerHTML = '';
   for (let i = 0; i < QUESTS.length; i++) {
     const q = QUESTS[i], done = isDone(q.id);
-    const cur = Math.min(Math.max(0, q.progress() | 0), q.goal);
+    const cur = shownProgress(q);
     const card = document.createElement('div');
     card.className = 'quest-card ui-tile';
     card.dataset.done = done ? '1' : '0';

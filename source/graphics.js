@@ -757,6 +757,31 @@ export function render() {
   if (POST.isActive()) POST.render(renderer, scene, camera); else renderer.render(scene, camera);
 }
 
+// Второй проход кадра для окна итогов забега (source/overscreen.js): группа-«студия» глубоко под
+// полом ТОЙ ЖЕ сцены рисуется своей камерой в прямоугольник x, y, w, h (CSS-пиксели от левого
+// верхнего угла) поверх уже готового кадра. Сцена, свет и туман общие с забегом — шейдеры не
+// перекомпилируются и программы материалов не переключаются. Коридор лежит дальше дальней
+// плоскости камеры студии и отсекается по frustum. В обычном кадре группа скрыта.
+// Цвет не чистим (только глубину): фон студии — полупрозрачная подложка, она проявляется
+// поверх кадра одновременно с появлением панели. Теневая карта и матрицы сцены уже посчитаны
+// в основном проходе этого кадра — второй раз не нужно.
+let _studioSz = null;
+export function renderStudio(group, cam, x, y, w, h) {
+  if (!_studioSz) _studioSz = new THREE.Vector2();
+  renderer.getSize(_studioSz);
+  const sm = renderer.shadowMap, autoSm = sm.autoUpdate, autoScene = scene.autoUpdate, autoClr = renderer.autoClear, disc = discU.uShIn.value;
+  sm.autoUpdate = false; scene.autoUpdate = false; renderer.autoClear = false;
+  discU.uShIn.value = -1e6;                      // диск-тень под персонажем виден при любом уровне графики
+  const by = _studioSz.y - y - h;                // у WebGL ось y снизу вверх
+  renderer.setViewport(x, by, w, h); renderer.setScissor(x, by, w, h); renderer.setScissorTest(true);
+  group.visible = true;
+  renderer.clearDepth();                         // при включённом scissor чистится только прямоугольник
+  renderer.render(scene, cam);
+  group.visible = false;
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, _studioSz.x, _studioSz.y);
+  sm.autoUpdate = autoSm; scene.autoUpdate = autoScene; renderer.autoClear = autoClr; discU.uShIn.value = disc;
+}
+
 export function initGraphics(container) {
   const q = QLT.Q;
   ctxAA = q.aa;

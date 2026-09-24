@@ -273,6 +273,20 @@ function writeHud() {
 }
 export function updateHud(dt) { hudT -= dt; if (hudT > 0) return; hudT = HUD_HZ; writeHud(); }
 
+// Вечный бафф питомца: плашка того же вида, но без полосы времени — действует весь забег.
+// Стоит последней в #buffs, то есть в самом углу; временные паверапы встают над ней.
+// texKey — ключ иконки из pets.js (поле hud) или '' — плашка скрыта. Зовёт main.js:resetRun();
+// src меняется только при смене питомца, поэтому картинка не перезапрашивается каждый забег.
+let petKey = '';
+export function setPetBuff(texKey) {
+  const box = U.$('buff_pet'); if (!box) return;
+  if (texKey !== petKey) {
+    petKey = texKey;
+    const im = box.querySelector('img'); if (im && texKey) im.src = TEX.url(texKey);
+  }
+  box.classList.toggle('on', !!texKey);
+}
+
 // Полный сброс на старте забега и при выходе в меню.
 export function reset() {
   for (let i = activePickups.length - 1; i >= 0; i--) release(i);

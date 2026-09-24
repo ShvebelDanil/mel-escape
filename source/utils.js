@@ -16,8 +16,9 @@ export function weightedPick(items, weightOf) {
 
 export const UI = {};
 export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'reviveCost', 'reviveCostIcon', 'skipIntroBtn',
-  'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
-  'newRecord', 'musicVol', 'soundVol', 'game',
+  'flash', 'yell', 'bottleNum', 'score', 'comboText', 'comboBonus', 'meterBonus', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
+  'newRecord', 'reviveBox', 'reviveCount', 'overStats', 'overStage', 'overBest', 'overBestBox', 'overBalance', 'overGain',
+  'overQuests', 'overQuestsHead', 'musicVol', 'soundVol', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinAdBtn', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets',
@@ -32,12 +33,12 @@ export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
 export function show(el, on) { if (el) el.classList.toggle('hidden', !on); }
-export const SCREENS = ['menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn', 'shop'];
+export const SCREENS = ['menu', 'over', 'overStats', 'pause', 'hud', 'skipIntroBtn', 'shop'];
 export function screens(...ids) {
   for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0);
   // Sticky-баннер висит только на «спокойных» экранах: меню, магазин, экран смерти.
   // В забеге и в заставке он перекрывал бы дорогу, поэтому там его снимаем.
-  setSticky(ids.indexOf('menu') >= 0 || ids.indexOf('shop') >= 0 || ids.indexOf('over') >= 0);
+  setSticky(ids.indexOf('menu') >= 0 || ids.indexOf('shop') >= 0 || ids.indexOf('over') >= 0 || ids.indexOf('overStats') >= 0);
 }
 
 export const LANES = [-2.3, 0, 2.3];
