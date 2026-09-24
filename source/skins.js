@@ -7,16 +7,19 @@ import { createMelVisual as melPunk } from '../assets/models/mel5-visual.js';
 import { createMelVisual as melGucci } from '../assets/models/mel-visual.js';
 import { createMelVisual as melPropeller } from '../assets/models/mel9-visual.js';
 
-// Чтобы добавить новый скин — достаточно дописать сюда одну строку.
+// Порядок массива = порядок карусели в магазине: скины идут по возрастанию цены,
+// секретный — последним. Чтобы добавить новый скин — достаточно дописать сюда одну строку.
+// nameKey/descKey — ключи словаря source/i18n.js, а не готовый текст: магазин переводит их
+// в момент отрисовки карточки, поэтому язык может уточниться уже после загрузки модуля.
 export const SKINS = [
-  { id: 'schoolboy', name: 'ШКОЛЬНИК', price: 0, desc: 'Классический скин Мэла. Всё как в обычной школе.', build: melSchoolboy },
-  { id: 'schoolboy2', name: 'ШКОЛЬНИК 2.0', price: 250, desc: 'Свежая форма, зелёный галстук и рюкзак отличника.', build: melSchoolboy2 },
-  { id: 'darkdrun', name: 'ТЁМНЫЙ ДРУН', price: 400, desc: 'Пуховик с ушами. Капюшон не снимает даже на уроке.', build: melDarkDrun },
-  { id: 'punk', name: 'ПАНК', price: 500, desc: 'Дневник сдавать не собирается. Вообще никогда.', build: melPunk },
-  { id: 'mell', name: 'МЕЛЛ', price: 700, desc: 'Деньги с обеда депает в казик.', build: melGucci },
-  // secret: не продаётся ни за какие чекушки — выдаётся за ВСЕ выполненные задания (source/quests.js).
+  { id: 'schoolboy', nameKey: 'skin.schoolboy.name', price: 0, descKey: 'skin.schoolboy.desc', build: melSchoolboy },
+  { id: 'schoolboy2', nameKey: 'skin.schoolboy2.name', price: 500, descKey: 'skin.schoolboy2.desc', build: melSchoolboy2 },
+  { id: 'punk', nameKey: 'skin.punk.name', price: 1000, descKey: 'skin.punk.desc', build: melPunk },
+  { id: 'darkdrun', nameKey: 'skin.darkdrun.name', price: 2000, descKey: 'skin.darkdrun.desc', build: melDarkDrun },
+  { id: 'mell', nameKey: 'skin.mell.name', price: 5000, descKey: 'skin.mell.desc', build: melGucci },
+  // secret: не продаётся ни за какие пузырики — выдаётся за ВСЕ выполненные задания (source/quests.js).
   // Пока не выдан, магазин прячет имя/описание и показывает чёрный силуэт модели.
-  { id: 'propeller', name: 'ПРОПЕЛЛЕР', price: 0, secret: true, desc: 'Костюм, портфель и шапка с пропеллером. Взлететь пока не получилось.', build: melPropeller }
+  { id: 'propeller', nameKey: 'skin.propeller.name', price: 0, secret: true, descKey: 'skin.propeller.desc', build: melPropeller }
 ];
 
 export const findSkin = id => SKINS.find(s => s.id === id) || SKINS[0];
@@ -91,10 +94,12 @@ export function secretShot(open) {
   return shots[k];
 }
 
-export function buy(id) {
+// cost — цена со скидкой за досмотренные ролики (ADR.adPrice в shop.js); без него — полная.
+export function buy(id, cost) {
   const s = findSkin(id);
-  if (s.secret || isOwned(id) || U.save.currency < s.price) return false;
-  U.save.currency -= s.price;
+  const c = cost == null ? s.price : cost;
+  if (s.secret || isOwned(id) || U.save.currency < c) return false;
+  U.save.currency -= c;
   U.save.ownedSkins.push(id);
   U.persistSave();
   return true;
