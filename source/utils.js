@@ -28,7 +28,8 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'rouletteBetInc', 'rouletteBetDec', 'rouletteChanceSlider', 'rouletteSpinBtn', 'rouletteHint',
   'rouletteWheelDisc', 'rouletteWheelWater', 'rouletteWheelChance', 'rouletteWheelArrow',
   'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText',
-  'leaderboardModal', 'lbList', 'lbMsg', 'lbLoginBtn', 'lbYou'];
+  'leaderboardModal', 'lbList', 'lbMsg', 'lbLoginBtn', 'lbYou',
+  'powerupsModal', 'powerupsCurrency', 'powerupsList'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
@@ -64,8 +65,17 @@ export const DESK_TOP_Y = 1.045;
 // за всё время паверапов (магнит/х2/сапоги, считается в source/main.js) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {} };
+// powerupLvl: уровень прокачки каждого паверапа (1..4, см. LEVEL_MAX в powerups.js) —
+// каждый уровень выше первого прибавляет ему 5 секунд действия (powerups.js:timeFor).
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {}, powerupLvl: { magnet: 1, boots: 1, double: 1 } };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+// Уровни паверапов из сейва: только известные id, клэмп 1..4 (потолок продублирован из
+// powerups.js:LEVEL_MAX — заводить обратный импорт utils.js → powerups.js ради одной константы смысла нет).
+function cleanLevels(v) {
+  const out = { magnet: 1, boots: 1, double: 1 };
+  if (v && typeof v === 'object') for (const id in out) { const n = v[id] | 0; if (n >= 1 && n <= 4) out[id] = n; }
+  return out;
+}
 // adProgress: сколько роликов уже просмотрено за конкретный скин/питомца («skin:punk» -> 2).
 // Обычный объект, а не Map: он как есть уходит в JSON и в облако Яндекса.
 function cleanCounts(v) {
@@ -88,6 +98,7 @@ export function readLocalSave() {
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
       save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.powerups = s.powerups | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
+      save.powerupLvl = cleanLevels(s.powerupLvl);
     }
   } catch (e) {}
 }
@@ -117,7 +128,7 @@ let cloudTimer = null, cloudPending = false;
 // десятками одинаковых ошибок. Поэтому сверяем payload сами и повтор просто не шлём.
 let lastCloudJson = '';
 export function cloudSave() {
-  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, powerups: save.powerups, questsDone: save.questsDone, adProgress: save.adProgress };
+  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, powerups: save.powerups, questsDone: save.questsDone, adProgress: save.adProgress, powerupLvl: save.powerupLvl };
   const json = JSON.stringify(data);
   if (json === lastCloudJson) return;
   // Метку ставим ДО отправки и при ошибке не откатываем: если Яндекс ответил «данные не
@@ -204,7 +215,7 @@ export const Sdk = {
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'powerups', 'questsDone', 'adProgress'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'powerups', 'questsDone', 'adProgress', 'powerupLvl'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         // Только если в облаке эти поля вообще есть: иначе пустая облачная запись
@@ -229,6 +240,10 @@ export const Sdk = {
         // устройстве могли досмотреть больше, терять это нечестно.
         const cloudAds = cleanCounts(d.adProgress);
         for (const k in cloudAds) if (cloudAds[k] > (save.adProgress[k] | 0)) save.adProgress[k] = cloudAds[k];
+        // Уровни паверапов — по каждому баффу отдельно максимум, той же логикой, что adProgress:
+        // они только растут, а понижать прокачку при мёрже между устройствами нечестно.
+        const cloudLv = cleanLevels(d.powerupLvl);
+        for (const id in save.powerupLvl) if (cloudLv[id] > save.powerupLvl[id]) save.powerupLvl[id] = cloudLv[id];
       }
       return true;
     }).catch(() => false);

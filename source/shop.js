@@ -217,6 +217,7 @@ export function refreshCurrency() {
   if (U.UI.menuCurrency) U.UI.menuCurrency.textContent = v;
   if (U.UI.shopCurrency) U.UI.shopCurrency.textContent = v;
   if (U.UI.rouletteCurrency) U.UI.rouletteCurrency.textContent = v;
+  if (U.UI.powerupsCurrency) U.UI.powerupsCurrency.textContent = v;
 }
 
 function refresh() {

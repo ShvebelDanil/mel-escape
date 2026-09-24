@@ -716,6 +716,51 @@
   .q-reward .v { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; }
   .q-reward .v img { height:1.15em; }
 
+  /* ===== Прокачка паверапов (кнопка ⚡, source/powerups.js) =====
+     Карточка — тот же грид, что у quest-card (иконка/тело/кнопка), но акцентный цвет свой
+     у каждого баффа (--c из реестра TYPES, та же переменная, что красит полосу в HUD). */
+  #powerupsModal .modal-head { justify-content:space-between; flex-wrap:wrap; row-gap:6px; }
+  .pu-cur { padding:5px 11px; font-size:clamp(14px,3.8vw,17px); gap:6px; }
+  #powerupsList { display:flex; flex-direction:column; gap:10px; overflow-y:auto; min-height:0; padding:2px 2px 5px; }
+  .pu-card {
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; text-align:left;
+    padding:10px 11px; border-color:rgba(255,255,255,0.16);
+    animation:puIn .32s cubic-bezier(.22,.9,.32,1.25) both; animation-delay:calc(var(--i) * 70ms);
+  }
+  .pu-card.on { animation:puLevelUp .38s ease; }
+  @keyframes puIn { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:none; } }
+  @keyframes puLevelUp { 0%,100% { transform:scale(1); } 45% { transform:scale(1.035); } }
+  .pu-icon {
+    width:44px; height:44px; border-radius:13px; flex:none; color:var(--c);
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+    box-shadow:0 0 9px var(--c);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pu-icon img { width:27px; height:27px; object-fit:contain; }
+  .pu-main { min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .pu-row1 { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .pu-name { font-size:clamp(13px,3.4vw,15px); font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:.3px; }
+  .pu-time { font-size:clamp(12px,3.2vw,14px); font-weight:900; color:var(--c); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .pu-row2 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .pu-dots { display:flex; gap:5px; }
+  .pu-dots i { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.12); transition:background-color .18s ease, box-shadow .18s ease; }
+  .pu-dots i.on { background:var(--c); box-shadow:0 0 5px var(--c); border-color:transparent; }
+  .pu-lvl { font-size:11px; font-weight:800; color:#b8ccbe; white-space:nowrap; }
+  .pu-upg {
+    appearance:none; border:none; cursor:pointer; font-family:inherit; flex:none;
+    display:flex; flex-direction:column; align-items:center; gap:2px; min-width:78px;
+    border-radius:12px; padding:8px 12px; font-weight:900; text-transform:uppercase; letter-spacing:.3px;
+    font-size:clamp(11px,2.9vw,13px); color:#06340f; transition:transform .06s ease, box-shadow .06s ease;
+    background:linear-gradient(180deg,#7ee081,#2fae4e); box-shadow:0 4px 0 #1d7a36;
+  }
+  .pu-upg:active { transform:translateY(3px); box-shadow:0 1px 0 #1d7a36; }
+  .pu-upg[data-state="locked"] { background:linear-gradient(180deg,#9aa2ab,#6f7780); box-shadow:0 4px 0 #4c535a; color:#fff; opacity:.8; }
+  .pu-upg[data-state="locked"]:active { box-shadow:0 1px 0 #4c535a; }
+  .pu-upg[data-state="max"] { background:rgba(255,255,255,0.08); box-shadow:none; color:#8ce39a; border:1px solid rgba(126,224,129,0.4); cursor:default; padding:12px; pointer-events:none; }
+  .pu-upg.on { animation:rltShake .4s ease; }
+  .pu-upg-cost { display:flex; align-items:center; gap:3px; font-size:12px; }
+  .pu-upg-cost img { height:1.1em; }
+
   /* ===== Баннер секретного скина (награда за ВСЕ задания) =====
      Та же плитка, что у карточек заданий, но с жёлтой рамкой: это приз, а не задание.
      Силуэт справа — обычная картинка (data URL), её один раз «фотографирует»
@@ -1048,6 +1093,7 @@
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" data-i18n-aria="menu.settings" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" data-i18n-aria="menu.quests" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
     <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" data-i18n-aria="menu.minigame" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="powerupsBtn" data-i18n-aria="menu.powerups" aria-label="Паверапы"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bolt"/></svg></button>
   </div>
   <h1 class="logo"><span data-i18n="logo.name">Мэл</span><span class="sub" data-i18n="logo.sub">Побег из школы</span></h1>
   <div class="stats-box">
@@ -1268,6 +1314,18 @@
         <div class="rlt-result-text hidden" id="rouletteResultText"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Прокачка паверапов (кнопка ⚡ #powerupsBtn). Карточки строит source/powerups.js
+     по массиву TYPES — 3 фиксированные строки, уровень и цена берутся из save.powerupLvl. -->
+<div id="powerupsModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="powerupsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bolt"/></svg></span><span class="t" data-i18n="pu.title">Паверапы</span></div>
+      <div class="cur-badge pu-cur"><img id="powerupsCurIcon" alt=""><span id="powerupsCurrency">0</span></div>
+    </div>
+    <div id="powerupsList"></div>
   </div>
 </div>
 

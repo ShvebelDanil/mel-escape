@@ -2,12 +2,25 @@ import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as ENT from './entities.js';
 import * as TEX from './textures.js';
+import * as SHOP from './shop.js';
+import * as QST from './quests.js';
+import { t } from './i18n.js';
 
 // ─── настройки системы (всё крутится отсюда) ──────────────────────────────────────
-// Длительности баффов, с. Меняются независимо друг от друга.
+// Длительности баффов на 1-м уровне прокачки, с. Все три одинаковые: разница в силе
+// баффов и так есть, разной стартовой длительности не нужно.
 export const MAGNET_TIME = 20;
-export const BOOTS_TIME = 25;
-export const DOUBLE_TIME = 25;
+export const BOOTS_TIME = 20;
+export const DOUBLE_TIME = 20;
+
+// ─── прокачка (меню, кнопка ⚡) ─────────────────────────────────────────────────
+// 4 уровня на бафф (изначально 1-й), каждый следующий прибавляет UPG_STEP секунд к базовой
+// длительности из TYPES[i].time. UPG_COSTS[i] — цена перехода С уровня i+1 НА i+2
+// (индекс = текущий уровень - 1), значит с 1-го на 2-й — 250, со 2-го на 3-й — 500,
+// с 3-го на 4-й — 1000. Валюта — та же, что в магазине/рулетке (save.currency).
+export const LEVEL_MAX = 4;
+const UPG_STEP = 5;
+const UPG_COSTS = [250, 500, 1000];
 
 // Расписание спавна. Считаем по МЕТРАМ трассы, а не по секундам: интервал в метрах одинаков
 // и для новичка (11 м/с), и для разогнавшегося игрока (27 м/с), тогда как по времени второй
@@ -53,13 +66,29 @@ const PU_VIS = 70;           // с какого расстояния пикап 
 const PU_FADE = 14;          // на каких метрах он проявляется из ничего
 const PU_ICON = 0.95, PU_HALO = 1.7;
 
-// Реестр типов. Порядок здесь = порядок иконок в HUD.
-// tex — ключ текстуры в textures.js:MANIFEST, color — цвет нимба и полосы таймера в HUD.
+// Реестр типов. Порядок здесь = порядок иконок в HUD и порядок строк в окне прокачки.
+// tex — ключ текстуры в textures.js:MANIFEST, color — цвет нимба и полосы таймера в HUD
+// (он же акцент карточки в окне прокачки), nameKey — заголовок карточки (source/i18n.js).
 export const TYPES = [
-  { id: 'magnet', tex: 'magnet', time: MAGNET_TIME, color: '#4fc3f7' },
-  { id: 'boots',  tex: 'boots',  time: BOOTS_TIME,  color: '#9ccc65' },
-  { id: 'double', tex: 'double', time: DOUBLE_TIME, color: '#ffd54f' }
+  { id: 'magnet', tex: 'magnet', time: MAGNET_TIME, color: '#4fc3f7', nameKey: 'pu.magnet' },
+  { id: 'boots',  tex: 'boots',  time: BOOTS_TIME,  color: '#9ccc65', nameKey: 'pu.boots' },
+  { id: 'double', tex: 'double', time: DOUBLE_TIME, color: '#ffd54f', nameKey: 'pu.double' }
 ];
+
+// Уровень баффа из сейва (1..LEVEL_MAX) и его действующая длительность с учётом прокачки.
+export function levelOf(type) { return U.save.powerupLvl[type.id] || 1; }
+export function timeFor(type) { return type.time + (levelOf(type) - 1) * UPG_STEP; }
+// Цена следующего уровня, или -1, если бафф уже прокачан до предела.
+export function nextCost(type) { const lvl = levelOf(type); return lvl >= LEVEL_MAX ? -1 : UPG_COSTS[lvl - 1]; }
+// Покупка следующего уровня. false — уже максимум или не хватает пузыриков.
+export function upgrade(type) {
+  const cost = nextCost(type);
+  if (cost < 0 || U.save.currency < cost) return false;
+  U.save.currency -= cost;
+  U.save.powerupLvl[type.id] = levelOf(type) + 1;
+  U.persistSave();
+  return true;
+}
 
 // Остаток действия каждого баффа в секундах. Плоский объект с фиксированными полями:
 // в кадре по нему идёт три явных сравнения, без for..in и без промежуточных массивов.
@@ -143,7 +172,7 @@ export function noteDist(d) { if (!duePick && d >= nextD) duePick = pickType(); 
 // Тип, который ждёт места на трассе (level.js спрашивает это на каждом паттерне).
 export function pendingType() { return duePick; }
 
-function grant(t) { active[t.id] += t.time; }   // тот же бафф продлевает сам себя
+function grant(t) { active[t.id] += timeFor(t); }   // тот же бафф продлевает сам себя, с учётом прокачки
 
 // ─── кадр ────────────────────────────────────────────────────────────────────────
 // Таймеры баффов, покачивание и сбор пикапа. Возвращает тип поднятого
@@ -260,13 +289,22 @@ export function initPowerups() {
     box.style.setProperty('--c', t.color);
     hudEls.push({ t, box, on: false, low: false });
   }
+  // Своя обвязка окна прокачки (как в shop.js/roulette.js): main.js только открывает
+  // его кнопкой, закрытие и клик по фону — здесь.
+  const close = act(closeUpgrades);
+  const cl = U.$('powerupsClose'); if (cl) cl.addEventListener('click', close);
+  const m = U.UI.powerupsModal;
+  if (m) m.addEventListener('click', e => { if (e.target === m) close(); });
 }
+// Клик по кнопке модалки: единый ensure+click, как в act() у main.js/shop.js —
+// здесь не переиспользуем их act(), чтобы не тянуть на них лишний импорт.
+function act(fn) { return () => { if (U.adBusy) return; U.Sound.ensure(); U.Sound.click(); fn(); }; }
 function writeHud() {
   for (let i = 0; i < hudEls.length; i++) {
     const e = hudEls[i], left = active[e.t.id], on = left > 0;
     if (on !== e.on) { e.on = on; e.box.classList.toggle('on', on); }
     if (!on) { if (e.low) { e.low = false; e.box.classList.remove('low'); } continue; }
-    e.box.style.setProperty('--p', (left / e.t.time).toFixed(3));
+    e.box.style.setProperty('--p', (left / timeFor(e.t)).toFixed(3));
     const low = left <= 3;                           // последние секунды бафф мигает
     if (low !== e.low) { e.low = low; e.box.classList.toggle('low', low); }
   }
@@ -294,3 +332,73 @@ export function reset() {
   nextD = FIRST_DIST; duePick = null; lastId = ''; dblTail = 0; hudT = 0;
   writeHud();
 }
+
+// ─── окно прокачки (меню, кнопка ⚡ #powerupsBtn) ────────────────────────────────
+// Три карточки строятся один раз при первом открытии окна и дальше только переписываются
+// точечно (числа/состояние кнопки) — сами DOM-узлы не пересоздаются. Порядок = TYPES.
+const puCards = [];
+function buildPuList() {
+  const list = U.UI.powerupsList; if (!list || puCards.length) return;
+  for (let i = 0; i < TYPES.length; i++) {
+    const type = TYPES[i];
+    const card = document.createElement('div');
+    card.className = 'pu-card ui-tile';
+    card.style.setProperty('--c', type.color);
+    card.style.setProperty('--i', i);
+    card.innerHTML =
+      '<div class="pu-icon"><img alt=""></div>' +
+      '<div class="pu-main">' +
+        '<div class="pu-row1"><span class="pu-name"></span><span class="pu-time"></span></div>' +
+        '<div class="pu-row2"><div class="pu-dots"><i></i><i></i><i></i><i></i></div><span class="pu-lvl"></span></div>' +
+      '</div>' +
+      '<button class="pu-upg" type="button" data-state="buy"><span class="pu-upg-t"></span><span class="pu-upg-cost"><img alt=""><b></b></span></button>';
+    card.querySelector('.pu-icon img').src = TEX.url(type.tex);
+    card.querySelector('.pu-upg-cost img').src = TEX.url('bottle');
+    list.appendChild(card);
+    const e = { type, card, btn: card.querySelector('.pu-upg'), dots: card.querySelectorAll('.pu-dots i') };
+    e.btn.addEventListener('click', act(() => onUpgradeClick(e)));
+    puCards.push(e);
+  }
+}
+
+function renderPuCard(e) {
+  const lvl = levelOf(e.type), max = lvl >= LEVEL_MAX;
+  e.card.querySelector('.pu-name').textContent = t(e.type.nameKey);
+  e.card.querySelector('.pu-time').textContent = t('pu.duration', { n: timeFor(e.type) });
+  e.card.querySelector('.pu-lvl').textContent = t('pu.level', { n: lvl, max: LEVEL_MAX });
+  for (let i = 0; i < e.dots.length; i++) e.dots[i].classList.toggle('on', i < lvl);
+  const tEl = e.btn.querySelector('.pu-upg-t'), costEl = e.btn.querySelector('.pu-upg-cost');
+  if (max) {
+    e.btn.dataset.state = 'max';
+    tEl.textContent = t('pu.max');
+    U.show(costEl, false);
+  } else {
+    const cost = nextCost(e.type);
+    e.btn.dataset.state = U.save.currency >= cost ? 'buy' : 'locked';
+    tEl.textContent = t('pu.upgrade');
+    U.show(costEl, true);
+    costEl.querySelector('b').textContent = cost;
+  }
+}
+
+function renderPowerupsShop() {
+  buildPuList();
+  SHOP.refreshCurrency();
+  for (let i = 0; i < puCards.length; i++) renderPuCard(puCards[i]);
+}
+
+// Апгрейд куплен — карточка «подпрыгивает» (replayCss, тот же приём, что у .buff/.new-record).
+// Не хватило пузыриков — лёгкая встряска самой кнопки, без модалок и лишнего шума.
+function onUpgradeClick(e) {
+  if (e.btn.dataset.state === 'max') return;
+  if (upgrade(e.type)) { U.Sound.purchase(); U.replayCss(e.card); }
+  else { U.Sound.denied(); U.replayCss(e.btn); }
+  renderPowerupsShop();
+}
+
+export function openUpgrades() {
+  QST.closeAll();
+  renderPowerupsShop();
+  U.show(U.UI.powerupsModal, true);
+}
+export function closeUpgrades() { U.show(U.UI.powerupsModal, false); }

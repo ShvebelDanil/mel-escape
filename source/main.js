@@ -570,6 +570,7 @@ function bindInput() {
   on('settingsBtn', act(() => QST.openSettings()));
   on('questsBtn', act(() => QST.openQuests()));
   on('minigameBtn', act(() => RLT.open()));
+  on('powerupsBtn', act(() => PWR.openUpgrades()));
   on('leaderboardBtn', act(() => LB.open()));
   on('pauseBtn', act(() => pauseRun())); on('resumeBtn', act(() => resumeRun()));
   on('restartBtn', act(() => { if (G.state !== 'paused') return; U.show(U.UI.pause, false); U.Sound.resumeAll(); U.maybeInterstitial(quickRestart); }));
@@ -630,7 +631,7 @@ function init() {
   ENT.initParticles(); ENT.initObstacleShadows(); ENT.initCoins();
   // DOM-иконки берут тот же файл, что и текстура монеты: браузер качает его один раз.
   const bottleUrl = TEX.url('bottle');
-  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon', 'overBalanceIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
+  for (const id of ['bottleIcon', 'menuBottleIcon', 'overBottleIcon', 'menuCurIcon', 'shopCurIcon', 'shopModalIcon', 'adRewardIcon', 'rouletteCurIcon', 'rouletteBetIcon', 'rouletteResultIcon', 'reviveCostIcon', 'overBalanceIcon', 'powerupsCurIcon']) { const im = U.$(id); if (im) im.src = bottleUrl; }
   SHOP.initShop({ setPreviewSkin: applyPlayerSkin, setPreviewPet: applyPlayerPet, getPlayerNode: () => player.node, getPetNode: () => pet.node, getGrannyNode: () => granny.node, exitToMenu: exitShop });
   QST.initQuests();
   OVER.initOverScreen({ onReviveEnd: openStats });
