@@ -12,6 +12,11 @@ import { t } from './i18n.js';
 export const MAGNET_TIME = 20;
 export const BOOTS_TIME = 20;
 export const DOUBLE_TIME = 20;
+// Щит живёт по своей таблице, а не по общему шагу UPG_STEP: время растёт 15 → 20 → 25, а 4-й уровень
+// вместо времени даёт второй заряд. Заряд — одно поглощённое смертельное столкновение; кончились
+// заряды — щит ломается сразу, не дожидаясь конца таймера. Индекс = уровень - 1.
+const SHIELD_TIMES = [15, 20, 25, 25];
+const SHIELD_CHARGES = [1, 1, 1, 2];
 
 // ─── прокачка (меню, кнопка ⚡) ─────────────────────────────────────────────────
 // 4 уровня на бафф (изначально 1-й), каждый следующий прибавляет UPG_STEP секунд к базовой
@@ -65,19 +70,29 @@ export const PU_Y = 1.15;    // высота центра над полом — 
 const PU_VIS = 70;           // с какого расстояния пикап появляется, м (дальше — за туманом, рисовать нечего)
 const PU_FADE = 14;          // на каких метрах он проявляется из ничего
 const PU_ICON = 0.95, PU_HALO = 1.7;
+const PU_GLOW = 1.5;         // размер квада свечения (High); размытие bloom растягивает его ещё
+const GLOW_FAR = 60, GLOW_FULL = 20;   // свечение проявляется с 60 м и в полную силу с 20 м — как у ламп
 
 // Реестр типов. Порядок здесь = порядок иконок в HUD и порядок строк в окне прокачки.
 // tex — ключ текстуры в textures.js:MANIFEST, color — цвет нимба и полосы таймера в HUD
-// (он же акцент карточки в окне прокачки), nameKey — заголовок карточки (source/i18n.js).
+// (он же акцент карточки в окне прокачки), glow — цвет свечения пикапа в High (насыщеннее color:
+// bloom смешивается «экраном» и бледный цвет в нём превращается в белёсую дымку),
+// nameKey — заголовок карточки (source/i18n.js).
+// times/charges — необязательные таблицы по уровням (сейчас только у щита): times заменяет
+// расчёт time + шаг прокачки, charges — сколько ударов бафф выдерживает.
 export const TYPES = [
-  { id: 'magnet', tex: 'magnet', time: MAGNET_TIME, color: '#4fc3f7', nameKey: 'pu.magnet' },
-  { id: 'boots',  tex: 'boots',  time: BOOTS_TIME,  color: '#9ccc65', nameKey: 'pu.boots' },
-  { id: 'double', tex: 'double', time: DOUBLE_TIME, color: '#ffd54f', nameKey: 'pu.double' }
+  { id: 'magnet', tex: 'magnet', time: MAGNET_TIME, color: '#4fc3f7', glow: '#1fa8ff', nameKey: 'pu.magnet' },
+  { id: 'boots',  tex: 'boots',  time: BOOTS_TIME,  color: '#9ccc65', glow: '#5cf02a', nameKey: 'pu.boots' },
+  { id: 'double', tex: 'double', time: DOUBLE_TIME, color: '#ffd54f', glow: '#ffb814', nameKey: 'pu.double' },
+  { id: 'shield', tex: 'shield', time: SHIELD_TIMES[0], times: SHIELD_TIMES, charges: SHIELD_CHARGES, color: '#9fb8d8', glow: '#6fb4ff', nameKey: 'pu.shield' }
 ];
+const SHIELD_TYPE = TYPES[3];
 
 // Уровень баффа из сейва (1..LEVEL_MAX) и его действующая длительность с учётом прокачки.
 export function levelOf(type) { return U.save.powerupLvl[type.id] || 1; }
-export function timeFor(type) { return type.time + (levelOf(type) - 1) * UPG_STEP; }
+export function timeFor(type) { return type.times ? type.times[levelOf(type) - 1] : type.time + (levelOf(type) - 1) * UPG_STEP; }
+// Сколько ударов выдерживает бафф на текущем уровне (0 — у баффа нет зарядов).
+export function chargesFor(type) { return type.charges ? type.charges[levelOf(type) - 1] : 0; }
 // Цена следующего уровня, или -1, если бафф уже прокачан до предела.
 export function nextCost(type) { const lvl = levelOf(type); return lvl >= LEVEL_MAX ? -1 : UPG_COSTS[lvl - 1]; }
 // Покупка следующего уровня. false — уже максимум или не хватает пузыриков.
@@ -91,8 +106,10 @@ export function upgrade(type) {
 }
 
 // Остаток действия каждого баффа в секундах. Плоский объект с фиксированными полями:
-// в кадре по нему идёт три явных сравнения, без for..in и без промежуточных массивов.
-export const active = { magnet: 0, boots: 0, double: 0 };
+// в кадре по нему идёт четыре явных сравнения, без for..in и без промежуточных массивов.
+export const active = { magnet: 0, boots: 0, double: 0, shield: 0 };
+// Оставшиеся заряды щита. Щит активен, пока active.shield > 0; заряды без времени не живут.
+export const shield = { charges: 0 };
 
 let nextD = FIRST_DIST;      // метраж трассы, на котором дозреет следующий пикап
 let duePick = null;          // тип дозрел, но место на трассе ещё не нашлось (level.js подберёт)
@@ -102,7 +119,7 @@ let lastId = '';             // предыдущий выпавший тип —
 // игрок (или despawn), а те пути про MAX WIN ничего не знают и счётчик бы поплыл.
 let dblTail = 0;
 
-// Следующий тип: любой, кроме предыдущего. При трёх типах это ровно один из двух оставшихся.
+// Следующий тип: любой, кроме предыдущего. При четырёх типах это один из трёх оставшихся.
 function pickType() {
   let n = 0;
   for (let i = 0; i < TYPES.length; i++) if (TYPES[i].id !== lastId) pool[n++] = TYPES[i];
@@ -131,14 +148,19 @@ function mats(t) {
   if (!t.icMat) {
     t.icMat = new THREE.MeshBasicMaterial({ map: TEX.get(t.tex), transparent: true, alphaTest: 0.08, depthWrite: false, fog: false });
     t.haloMat = new THREE.MeshBasicMaterial({ map: getHaloTex(), color: t.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    t.glowMat = GFX.pickupGlowMat(t.glow);
   }
 }
-const nodePool = { magnet: [], boots: [], double: [] };
+const nodePool = { magnet: [], boots: [], double: [], shield: [] };
+// Свечение в High — отдельный квад, который рисуется только в проходе bloom (GFX.buildPickupGlow);
+// в Low/Medium его нет вовсе. Сам нимб в bloom не входит: его бледный цвет порог всё равно срезал.
+// Материал свечения тоже на типе: яркость (uAlpha) дышит вместе с нимбом.
 function buildNode(t) {
   mats(t);
   const g = new THREE.Group();
-  const halo = new THREE.Mesh(GFX.GPlane(PU_HALO, PU_HALO), t.haloMat); halo.renderOrder = 2; GFX.glow(halo); g.add(halo);   // в High ореол светится
+  const halo = new THREE.Mesh(GFX.GPlane(PU_HALO, PU_HALO), t.haloMat); halo.renderOrder = 2; g.add(halo);
   const ic = new THREE.Mesh(GFX.GPlane(PU_ICON, PU_ICON), t.icMat); ic.position.z = 0.012; ic.renderOrder = 3; g.add(ic);
+  const gl = GFX.bloomOnly(new THREE.Mesh(GFX.GPlane(PU_GLOW, PU_GLOW), t.glowMat)); gl.position.z = -0.01; g.add(gl);
   return g;
 }
 
@@ -172,7 +194,21 @@ export function noteDist(d) { if (!duePick && d >= nextD) duePick = pickType(); 
 // Тип, который ждёт места на трассе (level.js спрашивает это на каждом паттерне).
 export function pendingType() { return duePick; }
 
-function grant(t) { active[t.id] += timeFor(t); }   // тот же бафф продлевает сам себя, с учётом прокачки
+// Тот же бафф продлевает сам себя, с учётом прокачки. Щит при этом ещё и перезаряжается до
+// полного числа зарядов своего уровня (не суммирует их: второй подобранный щит — не «вечный»).
+function grant(t) {
+  active[t.id] += timeFor(t);
+  if (t === SHIELD_TYPE) shield.charges = chargesFor(t);
+}
+
+// Щит принимает смертельное столкновение (зовёт main.js перед caught()).
+// 0 — щита нет, игрок погибает; 1 — удар поглощён, заряды ещё есть; 2 — удар поглощён, щит сломался.
+export function absorbHit() {
+  if (active.shield <= 0 || shield.charges <= 0) return 0;
+  if (--shield.charges > 0) return 1;
+  active.shield = 0;
+  return 2;
+}
 
 // ─── кадр ────────────────────────────────────────────────────────────────────────
 // Таймеры баффов, покачивание и сбор пикапа. Возвращает тип поднятого
@@ -181,6 +217,7 @@ export function update(dt, px, py, pz) {
   if (active.magnet > 0) { active.magnet -= dt; if (active.magnet < 0) active.magnet = 0; }
   if (active.boots > 0) { active.boots -= dt; if (active.boots < 0) active.boots = 0; }
   if (active.double > 0) { active.double -= dt; if (active.double < 0) active.double = 0; }
+  if (active.shield > 0) { active.shield -= dt; if (active.shield <= 0) { active.shield = 0; shield.charges = 0; } }
 
   let got = null;
   const pcy = py + 0.95;
@@ -198,7 +235,12 @@ export function update(dt, px, py, pz) {
     p.node.position.set(p.x, y, p.z);
     const o = dz > PU_VIS - PU_FADE ? (PU_VIS - dz) / PU_FADE : 1;
     p.type.icMat.opacity = o;
-    p.type.haloMat.opacity = o * (0.72 + Math.sin(p.phase * 1.7) * 0.18);   // нимб дышит
+    const breath = 0.72 + Math.sin(p.phase * 1.7) * 0.18;
+    p.type.haloMat.opacity = o * breath;   // нимб дышит
+    // Свечение (High) дышит вместе с нимбом и гаснет вдали: у своего шейдера нет тумана, в котором
+    // гаснут остальные светящиеся объекты (postfx.js: GLOW_FOG_*), — фейд вручную.
+    const gf = dz > GLOW_FULL ? Math.max(0, (GLOW_FAR - dz) / (GLOW_FAR - GLOW_FULL)) : 1;
+    p.type.glowMat.uniforms.uAlpha.value = gf * (breath + 0.1);
     // Окно сбора по Z — тот же порядок, что у пузыриков (0.95): на просадке до 20 fps кадр
     // проходит 1.35 м, поэтому запас нужен, иначе редкий пикап можно физически «перепрыгнуть».
     const dy = pcy - y;                                    // >0 — пикап ниже центра игрока
@@ -284,10 +326,13 @@ export function initPowerups() {
   for (let i = 0; i < TYPES.length; i++) {
     const t = TYPES[i], box = U.$('buff_' + t.id);
     TEX.get(t.tex);                                  // прогреваем загрузку файла заранее, ещё на загрузочном экране
+    // По узлу каждого типа — сразу в сцену (скрытым) и в пул: GFX.applyQuality зовётся после этого
+    // и его renderer.compile соберёт шейдер свечения заранее, а не в кадре первого пикапа.
+    const node = buildNode(t); node.visible = false; GFX.scene.add(node); nodePool[t.id].push(node);
     if (!box) continue;
     const im = box.querySelector('img'); if (im) im.src = TEX.url(t.tex);
     box.style.setProperty('--c', t.color);
-    hudEls.push({ t, box, on: false, low: false });
+    hudEls.push({ t, box, on: false, low: false, nEl: box.querySelector('.buff-n'), n: -1 });
   }
   // Своя обвязка окна прокачки (как в shop.js/roulette.js): main.js только открывает
   // его кнопкой, закрытие и клик по фону — здесь.
@@ -307,6 +352,8 @@ function writeHud() {
     e.box.style.setProperty('--p', (left / timeFor(e.t)).toFixed(3));
     const low = left <= 3;                           // последние секунды бафф мигает
     if (low !== e.low) { e.low = low; e.box.classList.toggle('low', low); }
+    // Заряды щита: «×2» в углу плашки, пока их больше одного. Текст пишется только при смене числа.
+    if (e.nEl && e.t === SHIELD_TYPE && shield.charges !== e.n) { e.n = shield.charges; e.nEl.textContent = e.n > 1 ? '×' + e.n : ''; }
   }
 }
 export function updateHud(dt) { hudT -= dt; if (hudT > 0) return; hudT = HUD_HZ; writeHud(); }
@@ -328,13 +375,13 @@ export function setPetBuff(texKey) {
 // Полный сброс на старте забега и при выходе в меню.
 export function reset() {
   for (let i = activePickups.length - 1; i >= 0; i--) release(i);
-  active.magnet = 0; active.boots = 0; active.double = 0;
+  active.magnet = 0; active.boots = 0; active.double = 0; active.shield = 0; shield.charges = 0;
   nextD = FIRST_DIST; duePick = null; lastId = ''; dblTail = 0; hudT = 0;
   writeHud();
 }
 
 // ─── окно прокачки (меню, кнопка ⚡ #powerupsBtn) ────────────────────────────────
-// Три карточки строятся один раз при первом открытии окна и дальше только переписываются
+// Карточки строятся один раз при первом открытии окна и дальше только переписываются
 // точечно (числа/состояние кнопки) — сами DOM-узлы не пересоздаются. Порядок = TYPES.
 const puCards = [];
 function buildPuList() {
@@ -364,7 +411,9 @@ function buildPuList() {
 function renderPuCard(e) {
   const lvl = levelOf(e.type), max = lvl >= LEVEL_MAX;
   e.card.querySelector('.pu-name').textContent = t(e.type.nameKey);
-  e.card.querySelector('.pu-time').textContent = t('pu.duration', { n: timeFor(e.type) });
+  // У щита с несколькими зарядами к времени дописывается их число: «25 сек · ×2».
+  const ch = chargesFor(e.type);
+  e.card.querySelector('.pu-time').textContent = t('pu.duration', { n: timeFor(e.type) }) + (ch > 1 ? ' · ×' + ch : '');
   e.card.querySelector('.pu-lvl').textContent = t('pu.level', { n: lvl, max: LEVEL_MAX });
   for (let i = 0; i < e.dots.length; i++) e.dots[i].classList.toggle('on', i < lvl);
   const tEl = e.btn.querySelector('.pu-upg-t'), costEl = e.btn.querySelector('.pu-upg-cost');

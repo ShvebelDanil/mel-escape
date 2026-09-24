@@ -504,6 +504,195 @@ export function buildDiaryMesh() {
   put(g, pages, 0, -0.0351, 0);
   return g;
 }
+// Магнит в левой руке Мэла — визуал баффа "магнит" (powerups.js: PWR.active.magnet).
+// Нарочно крупный (~50×55 см): в забеге камера далеко позади, мелкий предмет терялся в кисти.
+// Подкова — выдавленный профиль (как на иконке magnet.webp): красная и синяя половины и серебряные
+// наконечники, 3 меша. Стоит как на иконке — дугой вверх, ножками вниз, плоскостью в камеру.
+// Начало координат группы — точка хвата: середина дуги (кулак сжимает магнит за центр). Подкова
+// шириной ~50 см, свисающая по центру кисти, внутренней половиной уходила бы в бедро — поэтому,
+// пока бафф активен, main.js:animatePlayer отводит левую руку в сторону (MAG_ARM_OUT), а сам
+// магнит доворачивает обратно на тот же угол, чтобы он висел вертикально.
+// Цвета: камера смотрит в спину, +x для неё — слева, поэтому +x — красная половина (как на иконке).
+// Не печётся (userData.noBake): bakeCharacter пересоздаёт меш с общим вершинно-окрашенным
+// материалом — пропали бы emissive (яркость) и слой свечения. Цена — 3 draw call, и только пока
+// бафф активен (group.visible=false иначе). Свечение в High — слой bloom (glow); порог
+// POST BLOOM_THRESH = 0.7 режется по каналам, поэтому emissive подобран так, чтобы красный/синий
+// канал уверенно выходил к 1.0 и ореол был своего цвета, а не белым.
+const MAG_RO = .23, MAG_RI = .105, MAG_LEG = .13, MAG_TIP = .1, MAG_D = .11, MAG_BT = .025, MAG_BS = .022;
+let magMats = null;
+function magGeo(key, shapes) {
+  return cached(geoCache, key, () => {
+    const g = new THREE.ExtrudeGeometry(shapes, { depth: MAG_D, bevelEnabled: true, bevelThickness: MAG_BT, bevelSize: MAG_BS, bevelSegments: 2, steps: 1, curveSegments: 7 });
+    g.translate(0, 0, -MAG_D / 2); return g;
+  });
+}
+// Половина подковы: s = 1 — правая, -1 — левая. Шов по центру отступает от оси на MAG_BS:
+// фаска раздвигает контур наружу, и без отступа стенки половин входили бы друг в друга.
+function magHalf(s) {
+  const sh = new THREE.Shape(), bs = MAG_BS;
+  const ao = Math.acos(bs / MAG_RO), ai = Math.acos(bs / MAG_RI);
+  const oA = s > 0 ? ao : Math.PI - ao, iA = s > 0 ? ai : Math.PI - ai, edge = s > 0 ? 0 : Math.PI;
+  sh.moveTo(s * bs, MAG_RO * Math.sin(ao));
+  sh.absarc(0, 0, MAG_RO, oA, edge, s > 0);
+  sh.lineTo(s * MAG_RO, -MAG_LEG); sh.lineTo(s * MAG_RI, -MAG_LEG);
+  sh.absarc(0, 0, MAG_RI, edge, iA, s < 0);
+  sh.closePath();
+  return sh;
+}
+function magTip(s) {
+  // Наконечник чуть шире ножки и отделён от неё канавкой в 2·MAG_BS (та же причина, что у шва).
+  const y0 = -MAG_LEG - 2 * MAG_BS, y1 = y0 - MAG_TIP, a = MAG_RI - .012, b = MAG_RO + .012;
+  const sh = new THREE.Shape();
+  sh.moveTo(s * a, y0); sh.lineTo(s * b, y0); sh.lineTo(s * b, y1); sh.lineTo(s * a, y1); sh.closePath();
+  return sh;
+}
+export function buildMagnetMesh() {
+  if (!magMats) magMats = {
+    blue: new THREE.MeshLambertMaterial({ color: '#2f7bff', emissive: '#0a3cc8' }),
+    red: new THREE.MeshLambertMaterial({ color: '#ff2d2d', emissive: '#b80c0c' }),
+    tip: new THREE.MeshLambertMaterial({ color: '#f2f2f2', emissive: '#6a6a6a' })
+  };
+  const g = new THREE.Group();
+  const parts = [
+    new THREE.Mesh(magGeo('magRed', magHalf(1)), magMats.red),
+    new THREE.Mesh(magGeo('magBlue', magHalf(-1)), magMats.blue),
+    new THREE.Mesh(magGeo('magTip', [magTip(1), magTip(-1)]), magMats.tip)
+  ];
+  // Сдвиг ставит середину дуги (0, (RO+RI)/2) в начало координат группы, то есть в кисть.
+  const grip = (MAG_RO + MAG_RI) / 2;
+  for (const m of parts) { m.position.y = -grip; m.userData.noBake = true; glow(m); g.add(m); }
+  return g;
+}
+
+// Крылатый сапог — визуал баффа "сапоги" (powerups.js: PWR.active.boots), по мотивам иконки
+// boots.webp: зелёная подошва и стопа, белый носок, голенище с белой полосой и воротником,
+// жёлтая кнопка и крупное белое крыло из трёх перьев сбоку. Это кожух, а не накладка:
+// каждый скин передаёт габариты с запасом больше своей обуви И штанины у щиколотки, поэтому
+// штатный ботинок целиком оказывается внутри, а сапог читается со всех сторон, в том числе сзади.
+// Начало координат — низ подошвы под центром стопы (скин ставит группу туда, где у него пол).
+// o: w/len — ширина/длина стопы, h — высота голенища от пола, sw/sd — ширина/глубина голенища,
+// sz — сдвиг голенища по z относительно центра стопы (голенище стоит над пяткой, а не над носком).
+// Ноги у моделей стоят всего в ~.3 друг от друга, поэтому сапог шире ноги растёт НАРУЖУ: скин
+// ставит группу со сдвигом side·dx (dx лежит в том же объекте o), внутренняя кромка остаётся у
+// средней линии — иначе левый и правый сапог входили бы друг в друга.
+// Все меши — одноцветный Lambert без карты: bakeCharacter сплавляет сапог в 1 draw call.
+// side: -1 — левая нога, 1 — правая (крыло и кнопка — на внешней стороне).
+const BOOT_GREEN = '#46c24f', BOOT_DARK = '#2c8a3a', BOOT_WHITE = '#f5f3ea', BOOT_SINK = .02;
+export function buildBootMesh(side, o) {
+  const g = new THREE.Group();
+  const { w, len, h, sw, sd, sz } = o, sy = .12, sh = h - sy;
+  // Подошва уходит на BOOT_SINK ниже начала координат: низ штатной обуви у скинов считан с точностью
+  // до мм (каблук «друна» торчал на 2.5 мм и на махе ноги был виден чёрной полоской). В стойке
+  // лишнее просто прячется под полом.
+  put(g, box(w + .02, .05 + BOOT_SINK, len + .02, BOOT_DARK), 0, (.05 - BOOT_SINK) / 2, 0); // подошва
+  put(g, box(w, .16, len, BOOT_GREEN), 0, .13, 0);                                    // стопа
+  put(g, box(w + .014, .17, len * .4, BOOT_WHITE), 0, .13, len * .3 + .007);          // носок
+  put(g, box(sw, sh, sd, BOOT_GREEN), 0, sy + sh / 2, sz);                            // голенище
+  put(g, box(sw + .016, .075, sd + .016, BOOT_WHITE), 0, sy + sh * .42, sz);          // полоса
+  put(g, box(sw + .03, .055, sd + .03, BOOT_DARK), 0, h - .0175, sz);                 // воротник (верх — h+.01)
+  put(g, box(sw - .06, .012, sd - .06, '#1f5a26'), 0, h + .017, sz);                  // тёмный проём сверху
+  const btn = sph(.045, 8, 6, '#ffb300'); btn.scale.x = .45;
+  put(g, btn, side * (sw / 2 + .012), sy + sh * .7, sz + sd * .15);                   // кнопка
+  // Крыло: три пера (сплюснутые сферы), растут от задней части голенища назад-наружу-вверх.
+  // Разворот наружу (ry) нужен ради камеры: перо в плоскости yz сзади видно только ребром.
+  const ry = -side * .75, sRy = Math.sin(-ry), cRy = Math.cos(ry);
+  // Высота и подъём перьев ограничены: выше колена крыло попадало под магнит в соседней руке
+  // (оба баффа могут идти одновременно), рука на махе проходила сквозь перья.
+  const bx = side * (sw / 2 + .015), by = sy + sh * .55, bz = sz - sd * .2;
+  const FL = [.22, .18, .14], FH = [.07, .058, .046], FA = [.3, .08, -.14];
+  for (let k = 0; k < 3; k++) {
+    const L = FL[k], a = FA[k], r = L * .8;
+    const f = sph(1, 10, 8, BOOT_WHITE); f.scale.set(.04, FH[k], L); f.rotation.set(a, ry, 0);
+    // Направление «назад» пера после поворотов XYZ: (-sin ry, cos ry·sin a, -cos ry·cos a).
+    put(g, f, bx + sRy * r, by - k * .035 + cRy * Math.sin(a) * r, bz - cRy * Math.cos(a) * r);
+  }
+  return g;
+}
+
+// Сфера-щит вокруг Мэла — визуал баффа "щит" (powerups.js: PWR.active.shield). Единичная сфера,
+// размер, появление и вспышки задаёт main.js (масштаб и uniform'ы), здесь только материал.
+// Шейдер вместо MeshLambert: полупрозрачный сине-серый пузырь читается по краю (френель), а
+// центр почти прозрачен и не прячет Мэла. По поверхности ползут мягкие полосы — «энергия».
+// Цвета пишутся в выход как есть: ShaderMaterial не кодирует в sRGB сам, поэтому uniform'ы уже
+// в sRGB — что задано в hex, то и на экране. Сама сфера в bloom не входит: в High светится
+// дочерняя оболочка-френель (SHIELD_GLOW_FS, ниже) — только край, центр Мэла не засвечивает.
+// Тень не отбрасывает и в OCCL не входит — глоу за пузырём не гасится.
+const SHIELD_VS = `
+varying vec3 vN; varying vec3 vV; varying float vY;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vY = position.y;
+  gl_Position = projectionMatrix * mv;
+}`;
+const SHIELD_FS = `
+uniform vec3 uBase; uniform vec3 uRim; uniform float uTime; uniform float uAlpha; uniform float uHit;
+varying vec3 vN; varying vec3 vV; varying float vY;
+void main() {
+  float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+  f = f * f;
+  float band = 0.5 + 0.5 * sin(vY * 16.0 - uTime * 3.2);
+  band *= band;
+  vec3 c = mix(uBase, uRim, f) + uRim * (uHit * 0.6);
+  float a = 0.1 + 0.8 * f + 0.07 * band + uHit * (0.3 + 0.4 * f);
+  gl_FragColor = vec4(min(c, vec3(1.0)), min(a, 1.0) * uAlpha);
+}`;
+export function buildShieldMesh() {
+  const u = {
+    uBase: { value: new THREE.Color('#7f93ad') }, uRim: { value: new THREE.Color('#d6ebff') },
+    uTime: { value: 0 }, uAlpha: { value: 0 }, uHit: { value: 0 }
+  };
+  const mat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: SHIELD_VS, fragmentShader: SHIELD_FS, transparent: true, depthWrite: false });
+  const geo = new THREE.SphereGeometry(1, 32, 20);
+  const m = new THREE.Mesh(geo, mat);
+  m.renderOrder = 4; m.visible = false;
+  // Свечение в High — отдельная оболочка только для прохода bloom (см. bloomOnly ниже). uniform'ы
+  // альфы и удара — те же объекты, что у сферы: main.js крутит одну пару, светятся обе.
+  const gu = { uCol: { value: new THREE.Color(SHIELD_GLOW) }, uAlpha: u.uAlpha, uHit: u.uHit };
+  m.add(bloomOnly(new THREE.Mesh(geo, bloomMat(gu, SHIELD_VS, SHIELD_GLOW_FS))));
+  return { mesh: m, u };
+}
+
+// ===================== Свечение «только для bloom» (High) =====================
+// Порог BLOOM_THRESH (postfx.js) режется по каждому каналу. Цветной ореол почти целиком под ним:
+// у голубого #4fc3f7 выше 0.7 только синий, у салатового — чуть-чуть зелёного, и свечения не видно.
+// Поэтому свечение рисуется ОТДЕЛЬНЫМ мешем, который есть только в слое BLOOM_LAYER: в обычном
+// кадре (и в Low/Medium вообще) его нет, а в проходе bloom он пишет THRESH + (1-THRESH)·цвет —
+// после порога остаётся ровно нужный цвет. Где свечения нет — discard, иначе база THRESH легла бы
+// на соседние светящиеся объекты. Смешивание MAX, а не сложение: база THRESH поверх, например,
+// светящихся сапог не выбивает их в белое. ShaderMaterial не кодирует выход в sRGB — цвет как в hex.
+const SHIELD_GLOW = '#8cc8ff';
+const B_TH = POST.BLOOM_THRESH.toFixed(3);
+const SHIELD_GLOW_FS = `
+uniform vec3 uCol; uniform float uAlpha; uniform float uHit;
+varying vec3 vN; varying vec3 vV; varying float vY;
+void main() {
+  float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+  float k = (0.8 * f * f * f + 0.6 * uHit * f) * uAlpha;
+  if (k < 0.01) discard;
+  gl_FragColor = vec4(${B_TH} + (1.0 - ${B_TH}) * min(uCol * k, vec3(1.0)), 1.0);
+}`;
+const PU_GLOW_VS = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+// Кольцо, а не пятно: в центре слабее — иначе яркое свечение поверх иконки пикапа засветило бы её.
+const PU_GLOW_FS = `
+uniform vec3 uCol; uniform float uAlpha; varying vec2 vUv;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;
+  float k = mix(0.35, 1.0, smoothstep(0.0, 0.5, d)) * (1.0 - smoothstep(0.5, 1.0, d)) * uAlpha;
+  if (k < 0.01) discard;
+  gl_FragColor = vec4(${B_TH} + (1.0 - ${B_TH}) * uCol * k, 1.0);
+}`;
+function bloomMat(uniforms, vs, fs) {
+  return new THREE.ShaderMaterial({
+    uniforms, vertexShader: vs, fragmentShader: fs, transparent: true, depthWrite: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation
+  });
+}
+// Объект только в слое свечения: в обычном кадре не рисуется.
+export function bloomOnly(o) { o.layers.set(POST.BLOOM_LAYER); return o; }
+// Материал свечения пикапа паверапа (powerups.js) для квада: цвет color, яркость — uniforms.uAlpha.
+export function pickupGlowMat(color) {
+  return bloomMat({ uCol: { value: new THREE.Color(color) }, uAlpha: { value: 0 } }, PU_GLOW_VS, PU_GLOW_FS);
+}
 export function buildTeacherDesk() {
   const g = new THREE.Group(); put(g, box(2.0, 0.1, 1.0, '#8a5a33'), 0, 1.02, 0); put(g, box(1.4, 0.02, 0.66, '#2e6b46'), 0, 1.08, 0);
   for (const dx of [-0.72, 0.72]) { put(g, box(0.5, 0.92, 0.85, '#7a4e2b'), dx, 0.48, 0); put(g, box(0.34, 0.05, 0.05, '#e0b83e'), dx, 0.62, 0.45); put(g, box(0.34, 0.05, 0.05, '#e0b83e'), dx, 0.34, 0.45); }

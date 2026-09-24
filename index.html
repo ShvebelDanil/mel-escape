@@ -232,6 +232,9 @@
   .buff img { position:absolute; left:0; right:0; top:9px; margin:0 auto; width:52px; height:52px; object-fit:contain; display:block; }
   /* последние секунды баффа */
   .buff.low img, .buff.low .buff-bar { animation:buffBlink .75s ease-in-out infinite; }
+  /* Счётчик зарядов щита (×2 на 4-м уровне). Пустой — скрыт: при одном заряде число не пишется. */
+  .buff-n { position:absolute; top:4px; right:6px; font-size:13px; font-weight:900; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.9); }
+  .buff-n:empty { display:none; }
   @keyframes buffPop { 0%{transform:scale(0.4); opacity:0;} 65%{transform:scale(1.14); opacity:1;} 100%{transform:scale(1); opacity:1;} }
   @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
   /* Вечный бафф питомца: без полосы времени, иконка по центру, фиолетовая рамка — цвет бонусов
@@ -1069,6 +1072,7 @@
     <div class="buff" id="buff_magnet"><span class="buff-bar"></span><img alt=""></div>
     <div class="buff" id="buff_boots"><span class="buff-bar"></span><img alt=""></div>
     <div class="buff" id="buff_double"><span class="buff-bar"></span><img alt=""></div>
+    <div class="buff" id="buff_shield"><span class="buff-bar"></span><img alt=""><b class="buff-n"></b></div>
     <!-- Вечный бафф питомца (powerups.js:setPetBuff) — последним, в самом углу. -->
     <div class="buff pet" id="buff_pet"><img alt=""></div>
   </div>

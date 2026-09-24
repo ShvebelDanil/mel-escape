@@ -62,17 +62,18 @@ export const DESK_TOP_Y = 1.045;
 // totalDist/runs/miniGames/powerups/questsDone обслуживают систему заданий (source/quests.js):
 // накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
 // мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки), число поднятых
-// за всё время паверапов (магнит/х2/сапоги, считается в source/main.js) и id уже выданных заданий.
+// за всё время паверапов (магнит/х2/сапоги/щит, считается в source/main.js) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
 // powerupLvl: уровень прокачки каждого паверапа (1..4, см. LEVEL_MAX в powerups.js) —
-// каждый уровень выше первого прибавляет ему 5 секунд действия (powerups.js:timeFor).
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {}, powerupLvl: { magnet: 1, boots: 1, double: 1 } };
+// каждый уровень выше первого прибавляет ему 5 секунд действия (powerups.js:timeFor; у щита
+// своя таблица времени и зарядов). Старые сейвы без shield получают 1-й уровень в cleanLevels.
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {}, powerupLvl: { magnet: 1, boots: 1, double: 1, shield: 1 } };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
 // Уровни паверапов из сейва: только известные id, клэмп 1..4 (потолок продублирован из
 // powerups.js:LEVEL_MAX — заводить обратный импорт utils.js → powerups.js ради одной константы смысла нет).
 function cleanLevels(v) {
-  const out = { magnet: 1, boots: 1, double: 1 };
+  const out = { magnet: 1, boots: 1, double: 1, shield: 1 };
   if (v && typeof v === 'object') for (const id in out) { const n = v[id] | 0; if (n >= 1 && n <= 4) out[id] = n; }
   return out;
 }
@@ -411,6 +412,18 @@ export const Sound = {
     if (this.sfx('powerup')) return; const t = this.ctx ? this.sfxTime() : 0;
     this.tone(660, 660, 0.09, 'square', 0.13, t); this.tone(880, 880, 0.09, 'square', 0.13, t + 0.07);
     this.tone(1320, 1760, 0.22, 'triangle', 0.14, t + 0.14);
+  },
+  // Щит (source/powerups.js) принял удар: звонкий «бум» по стеклу. Щит сломался (заряды кончились):
+  // тот же удар плюс осыпающийся шорох и падающий тон. Ключи банка shield_hit / shield_break — как у
+  // powerup, в таблицу SFX (audio.js) они не внесены, поэтому пока звучит только синтез.
+  shieldHit() {
+    if (this.sfx('shield_hit')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(520, 260, 0.25, 'triangle', 0.18, t); this.tone(1560, 1040, 0.18, 'sine', 0.1, t);
+  },
+  shieldBreak() {
+    if (this.sfx('shield_break')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(520, 260, 0.25, 'triangle', 0.18, t); this.noise(0.45, 0.16, 3200);
+    this.tone(1760, 440, 0.4, 'square', 0.06, t + 0.05);
   },
   // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
   stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },

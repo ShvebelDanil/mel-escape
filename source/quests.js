@@ -23,7 +23,7 @@ export const QUESTS = [
   { id: 'skin1',      icon: 'ic-shirt',  nameKey: 'quest.skin1',       goal: 1,     reward: 100, progress: () => U.save.ownedSkins.length },
   { id: 'pet1',       icon: 'ic-paw',    nameKey: 'quest.pet1',        goal: 1,     reward: 100, progress: () => U.save.ownedPets.length },
   { id: 'mini3',      icon: 'ic-money',  nameKey: 'quest.mini5',       goal: 5,     reward: 200, progress: () => U.save.miniGames },
-  // Паверапы считаются все вместе: магнит, х2 и сапоги (source/powerups.js).
+  // Паверапы считаются все вместе: магнит, х2, сапоги и щит (source/powerups.js).
   { id: 'power10',    icon: 'ic-bolt',   nameKey: 'quest.power10',     goal: 10,    reward: 200, progress: () => U.save.powerups }
 ];
 

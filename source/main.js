@@ -17,6 +17,17 @@ import * as QLT from './quality.js';
 import * as OVER from './overscreen.js';
 
 const COMBO_WINDOW = 1.3;
+// Отвод левой руки в сторону, пока активен бафф магнита, рад (см. animatePlayer). Подобран проверкой
+// на всех скинах: с ~0.55 магнит, взятый за центр, ни в одной позе не входит в бедро/сапог/корпус.
+const MAG_ARM_OUT = 0.6;
+// Щит (source/powerups.js). Центр сферы — ось сальто (pivot): вращение корпуса вокруг центра шара
+// не меняет расстояний, поэтому один радиус покрывает и бег, и прыжок с поднятыми руками, и сальто.
+// 1.5 подобран по вершинам всех шести скинов (максимум — голова mel5 и дневник на взмахе, ~1.47).
+// Не влезает только магнит в поднятой в прыжке руке — его верх выглядывает на ~0.3 на пике прыжка.
+// SHIELD_SAFE — неуязвимость после поглощённого удара, с.
+const SHIELD_R = 1.5, SHIELD_SAFE = 1.0;
+// a — проявление 0..1, hit — вспышка удара 1→0, burst — разлёт при поломке 1→0, t — время для полос.
+const shieldFx = { mesh: null, u: null, a: 0, hit: 0, burst: 0, t: 0, warm: false };
 // Заяц (distK): бонусные метры начисляются не размазанно, а порциями по METER_BONUS_STEP —
 // каждые STEP / (distK − 1) м реального пути (при 1.25 — раз в 100 м, 4–9 с хода). Слева от
 // счётчика всплывает «+25 м» и летит в него; когда долетает (через METER_FLY с), к счёту
@@ -123,14 +134,27 @@ function updateCollisions() {
     if (py1 <= o.y0 + 0.04) continue;
     if (player.invuln > 0 || o.stumbled) continue;
     const ox = (o.hw + U.HIT_W) - Math.abs(player.x - o.x); const changing = Math.abs(player.x - U.LANES[player.lane]) > 0.6;
-    if (ox < 0.5 && changing) stumble(o); else caught(); return;
+    if (ox < 0.5 && changing) stumble(o); else fatalHit(o); return;
   }
+}
+// Смертельное столкновение. Сначала его пробует принять щит (source/powerups.js): Мэл проходит
+// сквозь препятствие (o.stumbled — больше не цепляет) и ненадолго неуязвим, чтобы соседнее в той же
+// связке препятствие не забрало его следующим кадром. Скользящий удар (stumble) щит НЕ тратит —
+// он и так не убивает; заряд уходит только на тот, что закончил бы забег.
+function fatalHit(o) {
+  const r = PWR.absorbHit();
+  if (!r) { caught(); return; }
+  o.stumbled = true; player.invuln = SHIELD_SAFE;
+  const y = player.y + player.node.pivot.position.y;
+  shieldFx.hit = 1;
+  if (r === 2) { shieldFx.burst = 1; U.Sound.shieldBreak(); ENT.burst(player.x, y, player.z, '#d6ebff', 12, 3.6); G.shake = Math.max(G.shake, 0.45); }
+  else { U.Sound.shieldHit(); ENT.burst(player.x, y, player.z, '#d6ebff', 6, 2.4); G.shake = Math.max(G.shake, 0.3); }
 }
 function getGroundY() {
   let cg = 0; for (const o of ENT.activeObstacles) { if (!o.platform || !hitsXZ(o)) continue; if (player.y >= o.y1 - U.PLATFORM_TOL) cg = Math.max(cg, o.y1); } return cg;
 }
 function stumble(o) {
-  if (granny.closeT > 1.2) { caught(); return; }
+  if (granny.closeT > 1.2) { fatalHit(o); return; }
   o.stumbled = true; const movingPlusX = U.LANES[player.lane] > player.x;
   let nl = nearestLane(player.x);
   if (Math.abs(U.LANES[nl] - o.x) < o.hw + 0.35) nl = U.clamp(nl + (movingPlusX ? -1 : 1), 0, 2);
@@ -266,6 +290,7 @@ function resetRun() {
   meterStep = G.distK > 1 ? METER_BONUS_STEP / (G.distK - 1) : 0; meterNext = meterStep; meterPendT = 0;
   for (const el of [U.UI.comboBonus, U.UI.meterBonus, U.UI.score]) if (el) el.classList.remove('on');
   PWR.reset();   // баффы и пикапы живут только внутри забега
+  shieldFx.a = 0; shieldFx.hit = 0; shieldFx.burst = 0;   // сфера щита гаснет сразу, без затухания (спрячет updateShieldFx)
   PWR.setPetBuff(pt.hud || '');   // плашка вечного бафа питомца в углу HUD
   if (U.UI.bottleNum) U.UI.bottleNum.textContent = '0'; updateScoreHud(true);
   LVL.resetDirector(); LVL.fillSpawns();
@@ -414,9 +439,52 @@ function footstep() {
   if (i === stepIdx) return;
   stepIdx = i; U.Sound.footstep();
 }
+// Сфера щита — ребёнок root Мэла: едет за ним и наклоняется при смене ряда вместе с ним, а мигание
+// неуязвимости (n.inner) её не гасит. Сфера одна на все скины — при смене скина перевешивается
+// на новый root здесь же (одно сравнение в кадре). Появление — надувается из 0.7 радиуса;
+// конец времени — сдувается обратно; поломка — разлетается наружу и тает за ~0.3 с.
+// Сфера строится на старте и первый кадр меню рисуется с нулевой альфой (warm): шейдер компилируется
+// тогда, а не в момент подбора щита посреди забега — на телефоне это был бы заметный фриз.
+function initShieldFx(n) {
+  const s = GFX.buildShieldMesh(); shieldFx.mesh = s.mesh; shieldFx.u = s.u; shieldFx.warm = true;
+  n.root.add(s.mesh); s.mesh.visible = true;
+}
+function updateShieldFx(n, dt) {
+  const fx = shieldFx, on = PWR.active.shield > 0, m = fx.mesh, u = fx.u;
+  if (fx.warm) { fx.warm = false; return; }            // кадр прогрева: видима, uAlpha = 0
+  if (!on && fx.a === 0 && fx.burst === 0) { if (m.visible) m.visible = false; return; }
+  if (m.parent !== n.root) n.root.add(m);
+  if (!m.visible) m.visible = true;
+  m.position.y = n.pivot.position.y;
+  fx.t += dt;
+  if (fx.hit > 0) { fx.hit -= dt * 3; if (fx.hit < 0) fx.hit = 0; }
+  let alpha, scale;
+  if (fx.burst > 0) {                                   // поломка: шар раздувается и тает
+    fx.burst -= dt / 0.3; if (fx.burst < 0) fx.burst = 0;
+    fx.a = 0; alpha = fx.burst; scale = 1 + (1 - fx.burst) * 0.35;
+  } else {
+    fx.a = on ? Math.min(1, fx.a + dt * 4) : Math.max(0, fx.a - dt * 3);
+    const e = 1 - (1 - fx.a) * (1 - fx.a);               // ease-out
+    alpha = fx.a; scale = 0.7 + 0.3 * e + fx.hit * 0.08;
+    // Последние 2 с щит мерцает — так же, как мигает его плашка в HUD.
+    if (on && PWR.active.shield < 2) alpha *= 0.62 + 0.38 * Math.sin(fx.t * 22);
+  }
+  m.scale.setScalar(SHIELD_R * scale);
+  u.uAlpha.value = alpha; u.uHit.value = fx.hit; u.uTime.value = fx.t;
+}
 function animatePlayer(dt) {
   const n = player.node; n.root.position.set(player.x, player.y, player.z); const faceTarget = (G.state === 'run' || G.state === 'over' || G.state === 'paused') ? 0 : intro.faceY; n.root.rotation.y = U.damp(n.root.rotation.y, faceTarget, 6, dt);
   const h = Math.max(0, player.y - player.groundY); n.shadow.position.y = player.groundY - player.y + 0.02; n.shadow.scale.setScalar(U.clamp(1 - h * 0.32, 0.4, 1));
+  // Визуал баффов на самой модели: магнит во второй руке, крылатые сапоги поверх штатной обуви.
+  // Сравнение перед записью — не обязательно (Object3D.visible это просто bool), но так дешевле
+  // читать в профайлере кадра: видно, что состояние меняется редко, а не на каждый кадр.
+  const magOn = PWR.active.magnet > 0; if (n.magnet.visible !== magOn) n.magnet.visible = magOn;
+  // Магнит держится за середину дуги, и в опущенной руке его внутренняя половина уходила бы в бедро,
+  // поэтому с магнитом левая рука отведена в сторону. Сам магнит доворачивается обратно на тот же
+  // угол и висит вертикально. Отвод — по оси z, мах бега — по x, они не мешают друг другу.
+  n.armL.rotation.z = U.damp(n.armL.rotation.z, magOn ? -MAG_ARM_OUT : 0, 10, dt); n.magnet.rotation.z = -n.armL.rotation.z;
+  const bootsOn = PWR.active.boots > 0; if (n.bootL.visible !== bootsOn) { n.bootL.visible = bootsOn; n.bootR.visible = bootsOn; }
+  updateShieldFx(n, dt);
   if (G.state === 'menu') { n.legL.rotation.x = U.damp(n.legL.rotation.x, -0.06, 8, dt); n.legR.rotation.x = U.damp(n.legR.rotation.x, 0.06, 8, dt); n.armL.rotation.x = U.damp(n.armL.rotation.x, -0.18, 8, dt); n.armR.rotation.x = U.damp(n.armR.rotation.x, -0.14, 8, dt); n.inner.position.y = -0.92 + Math.sin(performance.now() / 500) * 0.02; n.pivot.rotation.x = 0; return; }
   if (G.state === 'intro') return;
   const spinning = player.spinDir !== 0;
@@ -625,6 +693,7 @@ function init() {
   GFX.initGraphics(U.UI.game); GFX.buildEnvTextures();
   for (let i = 0; i < U.SEG_COUNT; i++) { const seg = GFX.buildSegment(i); segments.push(seg); GFX.scene.add(seg); }
   player.node = ENT.buildMel(SK.selectedId()); GFX.scene.add(player.node.root);
+  initShieldFx(player.node);
   granny.node = ENT.buildGranny(); GFX.scene.add(granny.node.root);
   deskScene = ENT.buildClassroom(); GFX.scene.add(deskScene.group);
   applyPlayerPet(PT.selectedId());
