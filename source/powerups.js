@@ -9,13 +9,13 @@ import { t } from './i18n.js';
 // ─── настройки системы (всё крутится отсюда) ──────────────────────────────────────
 // Длительности баффов на 1-м уровне прокачки, с. Все три одинаковые: разница в силе
 // баффов и так есть, разной стартовой длительности не нужно.
-export const MAGNET_TIME = 20;
-export const BOOTS_TIME = 20;
-export const DOUBLE_TIME = 20;
-// Щит живёт по своей таблице, а не по общему шагу UPG_STEP: время растёт 15 → 20 → 25, а 4-й уровень
+export const MAGNET_TIME = 15;
+export const BOOTS_TIME = 15;
+export const DOUBLE_TIME = 15;
+// Щит живёт по своей таблице, а не по общему шагу UPG_STEP: время растёт 10 → 15 → 20, а 4-й уровень
 // вместо времени даёт второй заряд. Заряд — одно поглощённое смертельное столкновение; кончились
 // заряды — щит ломается сразу, не дожидаясь конца таймера. Индекс = уровень - 1.
-const SHIELD_TIMES = [15, 20, 25, 25];
+const SHIELD_TIMES = [10, 15, 20, 20];
 const SHIELD_CHARGES = [1, 1, 1, 2];
 
 // ─── прокачка (меню, кнопка ⚡) ─────────────────────────────────────────────────
@@ -178,7 +178,7 @@ export function place(type, x, y, z) {
   duePick = null; lastId = type.id;
   // Следующий порог отсчитываем от РАСПИСАНИЯ, а не от фактического места: если пикап
   // пришлось перенести на пару паттернов вперёд, средний шаг всё равно остаётся 500 м.
-  nextD += INTERVAL_D + U.rand(-JITTER_D, JITTER_D);
+  p.step = INTERVAL_D + U.rand(-JITTER_D, JITTER_D); nextD += p.step;
 }
 function release(i) {
   const p = activePickups[i];
@@ -186,7 +186,15 @@ function release(i) {
   p.node = null; activePickups.splice(i, 1); descPool.push(p);
 }
 // Зовёт main.js:revive() — убирает паверапы в зоне, которую заново открывает воскрешение игрока.
-export function clearRange(fromZ, toZ) { for (let i = activePickups.length - 1; i >= 0; i--) { const p = activePickups[i]; if (p.z > fromZ && p.z < toZ) release(i); } }
+// Непойманный пикап возвращается в расписание (тип снова «дозрел», шаг откатывается) —
+// перегенерированная трасса поставит его заново, а не потеряет.
+export function clearRange(fromZ, toZ) {
+  for (let i = activePickups.length - 1; i >= 0; i--) {
+    const p = activePickups[i]; if (p.z <= fromZ || p.z >= toZ) continue;
+    if (!duePick) { duePick = p.type; nextD -= p.step; }
+    release(i);
+  }
+}
 
 // Тик расписания. Зовёт level.js из fillSpawns и передаёт метраж ТОЧКИ ГЕНЕРАЦИИ (G.dist + ahead),
 // а не текущий метраж игрока: пикап встанет на 170 м впереди, и считать надо там, где он встанет.

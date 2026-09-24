@@ -303,14 +303,27 @@ export function spawnObstacle(type, x, z, rot) {
   o.pendIdx = -1; pending.push(o); o.pendIdx = pending.length - 1;
   activeObstacles.push(o);
   // Бутылка не должна оказаться внутри препятствия. Награда предыдущего паттерна могла
-  // выступить в зазор (арка прыжка тянется на полсекунды дальше последнего объекта),
+  // выступить в зазор (дуга прыжка тянется на полсекунды дальше последнего объекта),
   // а препятствие ставится сюда только сейчас — значит, чистить надо на этой стороне.
+  // Чистим ГРУППОЙ, а не поштучно, иначе на трассе остаются дырявые дуги (см. dropGroup).
   // Полосы разнесены на 2.3 м при самом широком объекте 1.02 м (banner), поэтому сравнения x хватает.
   for (let i = activeCoins.length - 1; i >= 0; i--) {
     const c = activeCoins[i];
-    if (Math.abs(c.x - x) > 0.1 || Math.abs(c.z - z) >= def.hz + COIN_PAD_Z) continue;
-    if (c.y + COIN_PAD_UP > def.y0 && c.y - COIN_PAD_DOWN < def.y1) releaseCoin(i);   // на крыше парты — можно, внутри — нет
+    if (Math.abs(c.x - x) > 0.1 || Math.abs(c.z - z) >= def.hz + (c.line ? LINE_PAD_Z : COIN_PAD_Z)) continue;
+    if (!(c.y + COIN_PAD_UP > def.y0 && c.y - COIN_PAD_DOWN < def.y1)) continue;   // на крыше парты — можно, внутри — нет
+    if (!c.grp) { releaseCoin(i); continue; }
+    dropGroup(c.grp, c.line ? z - def.hz - LINE_PAD_Z : -Infinity);
+    i = activeCoins.length;   // массив перестроен — проходим заново; каждый заход снимает минимум одну бутылку
   }
+}
+// Препятствие следующего паттерна всегда стоит ДАЛЬШЕ по z, чем начало группы. Поэтому у линии
+// срезается хвост от кромки препятствия минус зазор — остаток по-прежнему ровная линия с отступом.
+// Дуга и подкат (cut = -Infinity) снимаются целиком: их половинка — это и есть «сломанный» спавн.
+// Если от линии осталось меньше GROUP_MIN — убираем и остаток.
+function dropGroup(grp, cut) {
+  let left = 0;
+  for (let i = activeCoins.length - 1; i >= 0; i--) { const c = activeCoins[i]; if (c.grp !== grp) continue; if (c.z > cut) releaseCoin(i); else left++; }
+  if (left && left < GROUP_MIN) for (let i = activeCoins.length - 1; i >= 0; i--) if (activeCoins[i].grp === grp) releaseCoin(i);
 }
 export function releaseObstacle(i) {
   const o = activeObstacles[i]; shadowRemove(o); GFX.freePic(o.group); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
@@ -338,6 +351,9 @@ const COIN_MAX = 96, COIN_HW = 0.7, COIN_HH = 0.7;
 // игрок смотрит на неё снизу и этого не видит, а честный 0.68 вырезал бы центральную бутылку
 // у каждой награды за подкат.
 export const COIN_PAD_Z = 0.36, COIN_PAD_UP = 0.32, COIN_PAD_DOWN = 0.68;
+// Линия пузыриков держит от препятствия в своём ряду ВИДИМЫЙ зазор (~1.3 м между краями), а не
+// впритык: иначе «ооо▯» читается как ошибка спавна. GROUP_MIN — короче линия не бывает.
+export const LINE_PAD_Z = 1.6, GROUP_MIN = 3;
 export const activeCoins = [];
 const coinDescPool = [];
 let coinMesh = null, coinPos = null;
@@ -364,7 +380,9 @@ export function initCoins() {
 }
 // Возвращает описатель (или null, если пул выбран): паверапу MAX WIN нужно дозаполнить
 // поля только что созданного близнеца.
-export function spawnCoin(x, y, z) {
+// grp — id группы награды (0 — одиночка, например близнец MAX WIN), line — группа-линия
+// (её можно укоротить с хвоста; дугу и подкат — только убрать целиком).
+export function spawnCoin(x, y, z, grp, line) {
   if (activeCoins.length >= COIN_MAX) return null;
   const c = coinDescPool.pop() || {};
   c.x = x; c.y = y; c.z = z; c.phase = Math.random() * Math.PI * 2;
@@ -375,6 +393,7 @@ export function spawnCoin(x, y, z) {
   // скрытый класс объекта в кадре), а паверапы в кадре ничего не аллоцировали.
   c.pull = 0; c.pv = 0; c.vx = 0; c.vy = 0; c.vz = 0;
   c.bx = x; c.tw = 0; c.sp = 0; c.pair = 0;
+  c.grp = grp || 0; c.line = line || 0;
   activeCoins.push(c);
   return c;
 }

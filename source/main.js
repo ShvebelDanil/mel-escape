@@ -359,13 +359,17 @@ function openStats() {
 // Воскрешение за пузырики: оплата и лимит проверены в биндинге 'reviveBtn', здесь только
 // сам возврат в забег — очистка ближайших к игроку паттернов (препятствия, пузырики И
 // паверапы — иначе игрок может ожить внутри объекта, который сам не убивает, но выглядит багом),
+// перегенерация трассы впереди под сниженную скорость,
 // чтобы не влететь в то, от чего он только что умер, и короткая неуязвимость на случай, если рядом ещё что-то есть.
 function revive() {
   OVER.close();
   G.reviveCount++; U.screens('hud'); G.state = 'run';
+  // Вся трасса впереди строится заново: паттерны были разложены под прежнюю скорость, а после
+  // воскрешения она ниже — связки растягивались, пузырики расходились с прыжком (LVL.rebaseDirector).
   const z0 = player.z - 6, z1 = player.z + Math.max(50, G.speed * 2.6);
-  ENT.clearObstacles(z0, z1); ENT.clearCoins(z0, z1); PWR.clearRange(z0, z1);
+  ENT.clearObstacles(z0, Infinity); ENT.clearCoins(z0, Infinity); PWR.clearRange(z0, Infinity);
   player.invuln = 2.8; player.rolling = 0; resetPose(); G.speed = Math.max(U.BASE_SPEED, G.speed * 0.7);
+  G.nextZ = z1; LVL.rebaseDirector(player.lane); LVL.fillSpawns();
   granny.closeT = 0; granny.catchMode = false; granny.targetZOff = -9.2; G.shake = 0.3; U.Sdk.gameplayStart();
   pet.y = 0; pet.vy = 0; pet.grounded = true; pet.rolling = 0;
 }
