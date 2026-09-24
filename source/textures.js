@@ -37,6 +37,12 @@ export const MANIFEST = {
   magnet: { file: 'magnet', mips: true, aniso: false },
   boots: { file: 'boots', mips: true, aniso: false },
   double: { file: 'double', mips: true, aniso: false },
+  // Пока файла shield.webp/.png нет, TEX.get отдаёт прозрачную заглушку (entry → catch): пикап щита
+  // на трассе виден только нимбом, плашка HUD — пустой рамкой. Игра от этого не падает.
+  shield: { file: 'shield', mips: true, aniso: false },
+  // Иконки вечного бафа питомца — только <img> в HUD (powerups.js:setPetBuff), в GPU не грузятся.
+  catPowerup: { file: 'cat_powerup' },
+  bunnyPowerup: { file: 'bunny_powerup' },
 };
 
 let ext = '.png';            // выбирается один раз в detectFormat()

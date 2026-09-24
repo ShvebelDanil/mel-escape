@@ -1,8 +1,9 @@
 import * as U from './utils.js';
 import * as SHOP from './shop.js';
 import * as QST from './quests.js';
+import { t } from './i18n.js';
 
-// Рулетка чекушек — мини-игра из главного меню (кнопка 💵 → #minigameBtn).
+// Рулетка пузыриков — мини-игра из главного меню (кнопка 💵 → #minigameBtn).
 // Экономика — обе константы только здесь: HOUSE_EDGE — средний возврат игроку (казино
 // забирает разницу), множитель выигрыша = HOUSE_EDGE*100/шанс%, то есть чем ниже выбранный
 // шанс, тем выше выплата (классика гэмблинг-рулеток, подтверждено пользователем).
@@ -11,15 +12,17 @@ export const BET_MIN = 10, BET_STEP = 10;
 const CHANCE_MIN = 5, CHANCE_MAX = 75, CHANCE_DEFAULT = 50;
 const PRESETS = [10, 30, 50, 75];
 const SPIN_MS = 4200;                 // длительность анимации остановки колеса
+const RESULT_AD_DELAY_MS = 900;       // пауза между показом результата и межстраничной рекламой
 const SPIN_TURNS_MIN = 5, SPIN_TURNS_MAX = 7; // сколько полных оборотов делает колесо перед остановкой
 const ZONE_MARGIN = 4;                // отступ от границы цветовой зоны (град.), чтобы указатель не вставал точно на стык
-const LOSE_LINES = ['Ничего страшного!', 'Не повезло — попробуй ещё раз!', 'В другой раз получится!', 'Почти! Крути ещё.'];
+// Ключи, а не текст: фраза выбирается в момент проигрыша и переводится тогда же.
+const LOSE_KEYS = ['roulette.lose1', 'roulette.lose2', 'roulette.lose3', 'roulette.lose4'];
 
 const multiplier = chancePct => HOUSE_EDGE * 100 / chancePct;
 
 let bet = 100, chance = CHANCE_DEFAULT;
 let spinning = false, finished = true, finishTimer = 0, rotationDeg = 0;
-let pendingWin = false, pendingPayout = 0;
+let pendingWin = false, pendingPayout = 0, adTimer = 0;
 
 const afford = () => (U.save.currency | 0) >= BET_MIN;
 // Ставка — любое целое число в [BET_MIN, баланс], без привязки к сетке шага: шаг нужен
@@ -104,8 +107,8 @@ function updateChanceUI() {
 }
 function updateHint() {
   const el = U.UI.rouletteHint; if (!el) return;
-  if (!afford()) { el.textContent = 'Недостаточно чекушек для ставки'; el.dataset.warn = '1'; }
-  else { el.textContent = 'Множитель при победе: ×' + multiplier(chance).toFixed(2); el.dataset.warn = '0'; }
+  if (!afford()) { el.textContent = t('roulette.noFunds'); el.dataset.warn = '1'; }
+  else { el.textContent = t('roulette.multiplier', { x: multiplier(chance).toFixed(2) }); el.dataset.warn = '0'; }
 }
 function setResultState(state, title, val) {
   const box = U.UI.rouletteResult; if (!box) return;
@@ -121,7 +124,7 @@ function setResultState(state, title, val) {
 }
 // Приглушённый превью потенциального выигрыша — состояние по умолчанию и после
 // любого изменения ставки/шанса (пока колесо не крутится).
-function updatePreview() { if (!spinning) setResultState('idle', 'Возможный выигрыш', potentialWin()); }
+function updatePreview() { if (!spinning) setResultState('idle', t('roulette.potential'), potentialWin()); }
 
 function setBet(v) { bet = clampBet(v); updateBetUI(); updatePreview(); }
 function changeBet(d) { setBet(bet + d); }
@@ -132,11 +135,11 @@ function finishSpin() {
   if (pendingWin) {
     U.save.currency += pendingPayout;
     U.Sound.purchase();
-    setResultState('win', 'Вы выиграли!', pendingPayout);
+    setResultState('win', t('roulette.win'), pendingPayout);
     U.replayCss(U.UI.rouletteResultBody);
   } else {
     U.Sound.denied();
-    setResultState('lose', 'Не повезло', U.pick(LOSE_LINES));
+    setResultState('lose', t('roulette.lose'), t(U.pick(LOSE_KEYS)));
     U.replayCss(U.UI.rouletteResultText);
   }
   U.persistSave();
@@ -144,6 +147,10 @@ function finishSpin() {
   spinning = false;
   bet = clampBet(bet); // баланс мог измениться (проигрыш/выигрыш) — ставка не должна превышать новый остаток
   updateCurrencyUI(); updateBetUI(); updateHint();
+  // Реклама после КАЖДОГО прокрута (force — мимо нашего кулдауна). Небольшая пауза перед
+  // показом нужна, чтобы игрок успел увидеть выпавший результат, а не получил ролик поверх него.
+  clearTimeout(adTimer);
+  adTimer = setTimeout(() => { adTimer = 0; U.maybeInterstitial(null, true); }, RESULT_AD_DELAY_MS);
 }
 
 function spin() {
@@ -154,7 +161,7 @@ function spin() {
   U.persistSave();
   pendingWin = Math.random() * 100 < chance;
   pendingPayout = Math.round(bet * multiplier(chance));
-  setResultState('idle', 'Крутим…', potentialWin());
+  setResultState('idle', t('roulette.spinning'), potentialWin());
   updateCurrencyUI(); updateBetUI(); updateHint();
   spinTo(pendingWin);
   clearTimeout(finishTimer);
@@ -172,7 +179,13 @@ export function open() {
   U.show(U.UI.rouletteModal, true);
 }
 // Пока крутится колесо — закрыть окно нельзя (как adreward.js блокирует close() во время pending).
-export function close() { if (!spinning) U.show(U.UI.rouletteModal, false); }
+export function close() {
+  if (spinning) return;
+  // Игрок ушёл из рулетки раньше, чем дошло дело до ролика — отменяем запланированный показ,
+  // иначе реклама всплыла бы уже в меню без всякой связи с действием игрока.
+  if (adTimer) { clearTimeout(adTimer); adTimer = 0; }
+  U.show(U.UI.rouletteModal, false);
+}
 
 export function initRoulette() {
   const on = (id, fn) => { const el = U.$(id); if (el) el.addEventListener('click', fn); };

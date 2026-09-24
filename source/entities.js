@@ -1,7 +1,9 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
 import * as SK from './skins.js';
+import * as QLT from './quality.js';
 import { createGrannyVisual } from '../assets/models/granny-visual.js';
+import { t } from './i18n.js';
 
 export function buildMel(skinId, dark) {
     // dark — чёрный силуэт вместо модели (закрытый секретный скин в магазине)
@@ -14,8 +16,10 @@ export function buildGranny() {
 
 export function buildClassroom() {
   const g = new THREE.Group();
+  // Мебель и рама доски — отдельная склейка: только они отбрасывают тень в High (тень стенок класса смотрелась плохо).
+  const furn = new THREE.Group();
   GFX.put(g, GFX.tplane(U.WALL_X * 2 + 0.4, U.WALL_H, GFX.wallTex), 0, U.WALL_H / 2, U.CLASS_Z1);
-  GFX.put(g, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(g, GFX.box(4.7, 2.3, 0.03, '#1b2320'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(g, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
+  GFX.put(furn, GFX.box(5.0, 2.6, 0.12, '#5d4634'), 0, 2.7, U.CLASS_Z1 + 0.06); GFX.put(furn, GFX.box(4.7, 2.3, 0.03, '#1b2320'), 0, 2.7, U.CLASS_Z1 + 0.135); GFX.put(furn, GFX.box(5.0, 0.08, 0.18, '#5d4634'), 0, 1.38, U.CLASS_Z1 + 0.2);
   // Картинка на доске класса: своя текстура classBoard, не серия boardN — она всегда одна и та же
   // и существует ровно в этом меше. Полотно 4.6×2.3 = ровно 2:1, под это соотношение и файл.
   // Материал-декаль (MTD) — чтобы PNG с прозрачным фоном (мел на доске) не показывал чёрный.
@@ -40,11 +44,13 @@ export function buildClassroom() {
   GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.28, U.WALL_H - U.DOOR_TOP, U.PART_T - 0.02, '#f0ecd9'), 0, (U.WALL_H + U.DOOR_TOP) / 2, U.CLASS_Z0);
   GFX.put(g, GFX.box(U.DOOR_HALF * 2 + 0.32, 0.16, U.PART_T + 0.08, '#6d4c2f'), 0, U.DOOR_TOP + 0.06, U.CLASS_Z0);
   const sign = GFX.put(g, new THREE.Mesh(GFX.GPlane(1.3, 0.45), new THREE.MeshBasicMaterial({
-    map: GFX.canvasTex(256, 96, (c) => { c.fillStyle = '#2e7d32'; c.fillRect(0, 0, 256, 96); c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(6, 6, 244, 84); c.fillStyle = '#ffffff'; c.font = 'bold 52px Arial'; c.textAlign = 'center'; c.fillText('ВЫХОД', 128, 66); })
+    map: GFX.canvasTex(256, 96, (c) => { c.fillStyle = '#2e7d32'; c.fillRect(0, 0, 256, 96); c.strokeStyle = '#ffffff'; c.lineWidth = 8; c.strokeRect(6, 6, 244, 84); c.fillStyle = '#ffffff'; c.font = 'bold 52px Arial'; c.textAlign = 'center'; c.fillText(t('world.exit'), 128, 66); })
   })), 0, U.DOOR_TOP + 0.5, U.CLASS_Z0 - U.PART_T / 2 - 0.01); sign.rotation.y = Math.PI;
-  for (const dx of [-3.2, 3.2]) { for (const dz of [-4.9, -7.3]) { const d = GFX.put(g, buildDeskMesh(), dx, 0, dz); d.scale.setScalar(0.92); d.rotation.y = Math.PI; } }
-  const td = GFX.buildTeacherDesk(); GFX.put(g, td.group, 0, 0, -9.7);
-  GFX.finalizeStatic(g); return { group: g, diary: td.diary };
+  for (const dx of [-3.2, 3.2]) { for (const dz of [-4.9, -7.3]) { const d = GFX.put(furn, buildDeskMesh(), dx, 0, dz); d.scale.setScalar(0.92); d.rotation.y = Math.PI; } }
+  const td = GFX.buildTeacherDesk(); GFX.put(furn, td.group, 0, 0, -9.7);
+  GFX.finalizeStatic(g); GFX.registerSurfaces(g);
+  GFX.finalizeStatic(furn); GFX.markCasters(furn, false); g.add(furn);   // добавляем после склейки g — иначе мебель слиплась бы со стенками
+  return { group: g, diary: td.diary };
 }
 
 // y0/y1 — вертикальный габарит коллизии. Правила честности (проверяются в level.js:runFeasible):
@@ -226,7 +232,8 @@ function buildObstacle(type) {
   else if (type === 'vault') { GFX.put(g, GFX.box(0.98, 0.32, 0.54, '#8a6236'), 0, 1.04, 0); GFX.put(g, GFX.box(1.04, 0.08, 0.6, '#5c4633'), 0, 1.2, 0); GFX.put(g, GFX.box(0.82, 0.36, 0.48, '#a07a4a'), 0, 0.7, 0); for (const [lx, lz] of [[-0.3, -0.16], [0.3, -0.16], [-0.3, 0.16], [0.3, 0.16]]) { const lg = GFX.box(0.09, 0.64, 0.09, '#3c4148'); lg.rotation.z = lx > 0 ? -0.11 : 0.11; GFX.put(g, lg, lx, 0.32, lz); } }
   else if (type === 'trayCart') { g.add(buildCartMesh()); for (let i = 0; i < 3; i++) GFX.put(g, GFX.box(0.78, 0.05, 0.6, i % 2 ? '#d9d2bd' : '#b8c2cc'), (i % 2 ? 0.035 : -0.035), 1.02 + i * 0.055, 0); }
   else if (type === 'cooler') { GFX.put(g, GFX.box(0.56, 1.2, 0.5, '#e6e8ea'), 0, 0.6, 0); GFX.put(g, GFX.box(0.6, 0.1, 0.54, '#9aa4ae'), 0, 1.22, 0); GFX.put(g, GFX.cyl(0.25, 0.2, 0.6, 12, '#7fb6d9'), 0, 1.57, 0); GFX.put(g, GFX.cyl(0.13, 0.13, 0.1, 10, '#4a5560'), 0, 1.87, 0); GFX.put(g, GFX.box(0.26, 0.1, 0.1, '#2b5e6b'), 0, 0.84, 0.29); GFX.put(g, GFX.box(0.62, 0.08, 0.56, '#4a5560'), 0, 0.04, 0); }
-  GFX.finalizeStatic(g); g.matrixAutoUpdate = false; return g; // матрица группы пересчитывается только при спавне, см. spawnObstacle
+  GFX.finalizeStatic(g); GFX.markCasters(g, true);   // тень в High: препятствие и отбрасывает её, и принимает (Мэл над партой)
+  g.matrixAutoUpdate = false; return g; // матрица группы пересчитывается только при спавне, см. spawnObstacle
 }
 
 // Тени препятствий: раньше у каждого препятствия был свой прозрачный диск — до 20 отдельных
@@ -263,17 +270,18 @@ for (const t in OB_DEFS) obstaclePool[t] = [];
 export const activeObstacles = [];
 const obDescPool = []; // описатели препятствий тоже переиспользуются (правило нулевых аллокаций)
 
-// Спавн идёт на SPAWN_AHEAD=170 м вперёд, а туман глухой уже на FOG_FAR=130 — всё, что дальше,
-// рисуется впустую. Поэтому препятствие заводится логически сразу (коллизии и маршрут считаются
-// от него), а в сцену попадает только когда подходит на VIS_AHEAD. Дальние объекты лежат в
+// Спавн идёт на SPAWN_AHEAD=170 м вперёд, а туман глухой уже на fog.far (130 м в Medium, 100 в Low) —
+// всё, что дальше, рисуется впустую. Поэтому препятствие заводится логически сразу (коллизии и маршрут
+// считаются от него), а в сцену попадает только когда подходит на границу тумана + 6 м. Граница берётся
+// из самого тумана: она зависит от уровня графики (source/quality.js). Дальние объекты лежат в
 // pending (он упорядочен по z по построению) и добавляются в pumpObstacles() из игрового цикла.
-const VIS_AHEAD = U.FOG_FAR + 6;
 const pending = [];
 let pendHead = 0;
 export function pumpObstacles(viewZ) {
+  const visAhead = GFX.scene.fog.far + 6;
   while (pendHead < pending.length) {
     const o = pending[pendHead];
-    if (o && o.z - viewZ > VIS_AHEAD) break;
+    if (o && o.z - viewZ > visAhead) break;
     pending[pendHead] = null; pendHead++;
     if (o) { o.pendIdx = -1; if (o.group) GFX.scene.add(o.group); }
   }
@@ -295,14 +303,27 @@ export function spawnObstacle(type, x, z, rot) {
   o.pendIdx = -1; pending.push(o); o.pendIdx = pending.length - 1;
   activeObstacles.push(o);
   // Бутылка не должна оказаться внутри препятствия. Награда предыдущего паттерна могла
-  // выступить в зазор (арка прыжка тянется на полсекунды дальше последнего объекта),
+  // выступить в зазор (дуга прыжка тянется на полсекунды дальше последнего объекта),
   // а препятствие ставится сюда только сейчас — значит, чистить надо на этой стороне.
+  // Чистим ГРУППОЙ, а не поштучно, иначе на трассе остаются дырявые дуги (см. dropGroup).
   // Полосы разнесены на 2.3 м при самом широком объекте 1.02 м (banner), поэтому сравнения x хватает.
   for (let i = activeCoins.length - 1; i >= 0; i--) {
     const c = activeCoins[i];
-    if (Math.abs(c.x - x) > 0.1 || Math.abs(c.z - z) >= def.hz + COIN_PAD_Z) continue;
-    if (c.y + COIN_PAD_UP > def.y0 && c.y - COIN_PAD_DOWN < def.y1) releaseCoin(i);   // на крыше парты — можно, внутри — нет
+    if (Math.abs(c.x - x) > 0.1 || Math.abs(c.z - z) >= def.hz + (c.line ? LINE_PAD_Z : COIN_PAD_Z)) continue;
+    if (!(c.y + COIN_PAD_UP > def.y0 && c.y - COIN_PAD_DOWN < def.y1)) continue;   // на крыше парты — можно, внутри — нет
+    if (!c.grp) { releaseCoin(i); continue; }
+    dropGroup(c.grp, c.line ? z - def.hz - LINE_PAD_Z : -Infinity);
+    i = activeCoins.length;   // массив перестроен — проходим заново; каждый заход снимает минимум одну бутылку
   }
+}
+// Препятствие следующего паттерна всегда стоит ДАЛЬШЕ по z, чем начало группы. Поэтому у линии
+// срезается хвост от кромки препятствия минус зазор — остаток по-прежнему ровная линия с отступом.
+// Дуга и подкат (cut = -Infinity) снимаются целиком: их половинка — это и есть «сломанный» спавн.
+// Если от линии осталось меньше GROUP_MIN — убираем и остаток.
+function dropGroup(grp, cut) {
+  let left = 0;
+  for (let i = activeCoins.length - 1; i >= 0; i--) { const c = activeCoins[i]; if (c.grp !== grp) continue; if (c.z > cut) releaseCoin(i); else left++; }
+  if (left && left < GROUP_MIN) for (let i = activeCoins.length - 1; i >= 0; i--) if (activeCoins[i].grp === grp) releaseCoin(i);
 }
 export function releaseObstacle(i) {
   const o = activeObstacles[i]; shadowRemove(o); GFX.freePic(o.group); GFX.scene.remove(o.group); obstaclePool[o.t].push(o.group);
@@ -315,7 +336,7 @@ export function clearCoins(fromZ, toZ) { for (let i = activeCoins.length - 1; i 
 // Бутылки: раньше каждая была THREE.Sprite, то есть отдельный draw call (в забеге до 20 за кадр).
 // Теперь все они — один меш из квадов, развёрнутых по базису камеры ровно так же, как это делает
 // спрайт, поэтому вид не меняется. Буферы созданы один раз, в кадре только перезапись координат.
-// Лимит поднят с 64: паверап MAX WIN (source/powerups.js) раздваивает чекушки в окне перед
+// Лимит поднят с 64: паверап MAX WIN (source/powerups.js) раздваивает пузырики в окне перед
 // игроком, то есть к замеренному пику 29 добавляются близнецы — со старым лимитом часть пар
 // молча терялась бы.
 // Квад бутылки — квадратный (COIN_HW = COIN_HH), потому что bottle.webp сам квадратный холст
@@ -330,6 +351,9 @@ const COIN_MAX = 96, COIN_HW = 0.7, COIN_HH = 0.7;
 // игрок смотрит на неё снизу и этого не видит, а честный 0.68 вырезал бы центральную бутылку
 // у каждой награды за подкат.
 export const COIN_PAD_Z = 0.36, COIN_PAD_UP = 0.32, COIN_PAD_DOWN = 0.68;
+// Линия пузыриков держит от препятствия в своём ряду ВИДИМЫЙ зазор (~1.3 м между краями), а не
+// впритык: иначе «ооо▯» читается как ошибка спавна. GROUP_MIN — короче линия не бывает.
+export const LINE_PAD_Z = 1.6, GROUP_MIN = 3;
 export const activeCoins = [];
 const coinDescPool = [];
 let coinMesh = null, coinPos = null;
@@ -346,11 +370,19 @@ export function initCoins() {
   geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.setDrawRange(0, 0);
   coinMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: GFX.texBottle, transparent: true, alphaTest: 0.15 }));
   coinMesh.frustumCulled = false; coinMesh.matrixAutoUpdate = false; coinMesh.updateMatrix(); coinMesh.renderOrder = 1;
+  GFX.glow(coinMesh);     // в High пузырики слегка светятся
+  // …и отбрасывают тень. Штатный материал глубины three r128 не знает про map/alphaTest и нарисовал
+  // бы в теневой карте сплошной прямоугольник — поэтому свой, с той же картинкой и тем же отсечением.
+  // Спрайт развёрнут к камере, а «солнце» может видеть его с любой стороны — тень рисуем с обеих.
+  coinMesh.castShadow = true; coinMesh.material.shadowSide = THREE.DoubleSide;
+  coinMesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: GFX.texBottle, alphaTest: 0.15 });
   GFX.scene.add(coinMesh);
 }
 // Возвращает описатель (или null, если пул выбран): паверапу MAX WIN нужно дозаполнить
 // поля только что созданного близнеца.
-export function spawnCoin(x, y, z) {
+// grp — id группы награды (0 — одиночка, например близнец MAX WIN), line — группа-линия
+// (её можно укоротить с хвоста; дугу и подкат — только убрать целиком).
+export function spawnCoin(x, y, z, grp, line) {
   if (activeCoins.length >= COIN_MAX) return null;
   const c = coinDescPool.pop() || {};
   c.x = x; c.y = y; c.z = z; c.phase = Math.random() * Math.PI * 2;
@@ -361,6 +393,7 @@ export function spawnCoin(x, y, z) {
   // скрытый класс объекта в кадре), а паверапы в кадре ничего не аллоцировали.
   c.pull = 0; c.pv = 0; c.vx = 0; c.vy = 0; c.vz = 0;
   c.bx = x; c.tw = 0; c.sp = 0; c.pair = 0;
+  c.grp = grp || 0; c.line = line || 0;
   activeCoins.push(c);
   return c;
 }
@@ -374,7 +407,7 @@ export function updateCoins(bobT) {
   const rx = e[0] * COIN_HW, ry = e[1] * COIN_HW, rz = e[2] * COIN_HW;
   const ux = e[4] * COIN_HH, uy = e[5] * COIN_HH, uz = e[6] * COIN_HH;
   for (let i = 0; i < n; i++) {
-    // Летящая под магнитом чекушка не покачивается: её ведёт собственная скорость,
+    // Летящий под магнитом пузырик не покачивается: его ведёт собственная скорость,
     // и синусоида поверх траектории читалась бы как дрожание.
     const c = activeCoins[i], k = i * 12, cy = c.pull ? c.y : c.y + Math.sin(bobT + c.phase) * 0.09;
     coinPos[k] = c.x - rx + ux; coinPos[k + 1] = cy - ry + uy; coinPos[k + 2] = c.z - rz + uz;
@@ -388,9 +421,11 @@ export function updateCoins(bobT) {
 export const particles = [];
 export function initParticles() {
   const geo = GFX.GPlane(0.24, 0.24);
-  for (let i = 0; i < 20; i++) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0 })); m.visible = false; GFX.scene.add(m); particles.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0 }); }
+  for (let i = 0; i < 20; i++) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0 })); m.visible = false; GFX.glow(m); GFX.scene.add(m); particles.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0 }); }
 }
 export function burst(x, y, z, color, n, force) {
+  // На Low искр нет: каждая — отдельный прозрачный draw call, а на слабом GPU это и перерисовка пикселей.
+  if (!QLT.Q.particles) return;
   let used = 0;
   for (const p of particles) {
     if (p.life > 0) continue;

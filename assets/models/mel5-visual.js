@@ -400,6 +400,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
   diary.rotation.x = Math.PI / 2;
   diary.visible = false;
 
+  // Магнит (бафф "магнит") зажат в центре левой кисти за середину дуги (руку отводит main.js).
+  const magnet = put(armL, GFX.buildMagnetMesh(), 0, -.71, 0);
+  magnet.visible = false;
+
   // --- Legs — thick, heavy ---
   function leg(x) {
     const l = put(inner, new THREE.Group(), x, .92, 0);
@@ -452,10 +456,16 @@ export function createMelVisual(THREE, GFX, options = {}) {
   }
   const legL = leg(-.19);
   const legR = leg(.19);
+  // Крылатые сапоги (бафф "сапоги") — кожух поверх боевых ботинок (подошва .289×.535 на z .07,
+  // низ каблука -.93) и манжеты джинсов (.322×.312 до -.705): штатная обувь целиком внутри.
+  // dx .025 — внутренняя кромка подошвы/воротника в .005 от средней линии (ноги на ±.19).
+  const BOOT = { w: .40, len: .62, h: .38, sw: .39, sd: .38, sz: -.07, dx: .025 };
+  const bootL = put(legL, GFX.buildBootMesh(-1, BOOT), -BOOT.dx, -.93, .07); bootL.visible = false;
+  const bootR = put(legR, GFX.buildBootMesh(1, BOOT), BOOT.dx, -.93, .07); bootR.visible = false;
 
   // --- Shadow disc ---
   // Тень лежит на root (вне pivot), поэтому её радиус уменьшаем тем же коэффициентом вручную.
   const shadow = GFX.shadowDisc(root, .62 * SCALE, GFX.SHADOW_MAT_CHAR);
 
-  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
+  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary, magnet, bootL, bootR };
 }

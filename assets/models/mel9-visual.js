@@ -172,6 +172,12 @@ export function createMelVisual(THREE, GFX, options = {}) {
     return l;
   }
   const legL = leg(-.135), legR = leg(.135);
+  // Крылатые сапоги (бафф "сапоги") — кожух поверх кроссовка (подошва .235×.355 на z .055, низ -.6355)
+  // и манжеты брюк (.212×.232 на -.478): стопа и голенище с запасом шире, штатная обувь целиком внутри.
+  // dx .04 — внутренняя кромка подошвы в .005 от средней линии (ноги на ±.135).
+  const BOOT = { w: .32, len: .43, h: .335, sw: .30, sd: .30, sz: -.055, dx: .04 };
+  const bootL = put(legL, GFX.buildBootMesh(-1, BOOT), -BOOT.dx, -.6355, .055); bootL.visible = false;
+  const bootR = put(legR, GFX.buildBootMesh(1, BOOT), BOOT.dx, -.6355, .055); bootR.visible = false;
 
   function arm(x) {
     const a = put(inner, new THREE.Group(), x, 1.44 + DY, 0);
@@ -186,6 +192,9 @@ export function createMelVisual(THREE, GFX, options = {}) {
   }
   const armL = arm(-.345), armR = arm(.345);
   const diary = put(armR, GFX.buildDiaryMesh(), 0, -.64, .14); diary.rotation.x = Math.PI / 2; diary.visible = false;
+  // Магнит (бафф "магнит") зажат в левой кисти (центр кисти — y -.64), ножки наружу от тела.
+  // Магнит (бафф "магнит") зажат в центре левой кисти за середину дуги (руку отводит main.js).
+  const magnet = put(armL, GFX.buildMagnetMesh(), 0, -.64, 0); magnet.visible = false;
 
   // ---- голова ----
   const headG = put(inner, new THREE.Group(), 0, 1.79 + DY, 0);
@@ -291,5 +300,5 @@ export function createMelVisual(THREE, GFX, options = {}) {
   }
 
   const shadow = GFX.shadowDisc(root, .5, GFX.SHADOW_MAT_CHAR);
-  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
+  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary, magnet, bootL, bootR };
 }
