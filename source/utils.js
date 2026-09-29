@@ -16,8 +16,9 @@ export function weightedPick(items, weightOf) {
 
 export const UI = {};
 export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud', 'reviveBtn', 'reviveCost', 'reviveCostIcon', 'skipIntroBtn',
-  'flash', 'yell', 'bottleNum', 'score', 'comboText', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
-  'newRecord', 'musicVol', 'soundVol', 'game',
+  'flash', 'yell', 'bottleNum', 'score', 'comboText', 'comboBonus', 'meterBonus', 'menuBest', 'menuBottles', 'overScore', 'overBottles',
+  'newRecord', 'reviveBox', 'reviveCount', 'overStats', 'overStage', 'overBest', 'overBestBox', 'overBalance', 'overGain',
+  'overQuests', 'overQuestsHead', 'musicVol', 'soundVol', 'game',
   'shop', 'menuCurrency', 'shopCurrency', 'skinName', 'skinDesc', 'skinPrice',
   'skinAction', 'skinAdBtn', 'skinDots', 'shopModal', 'shopModalTitle', 'shopModalText', 'shopModalBtn',
   'shopTabSkins', 'shopTabPets',
@@ -26,13 +27,20 @@ export const UI_IDS = ['loading', 'loadingText', 'menu', 'over', 'pause', 'hud',
   'rouletteModal', 'rouletteCurrency', 'rouletteCurIcon', 'rouletteAllIn', 'rouletteBetVal', 'rouletteBetIcon',
   'rouletteBetInc', 'rouletteBetDec', 'rouletteChanceSlider', 'rouletteSpinBtn', 'rouletteHint',
   'rouletteWheelDisc', 'rouletteWheelWater', 'rouletteWheelChance', 'rouletteWheelArrow',
-  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText'];
+  'rouletteResult', 'rouletteResultTitle', 'rouletteResultBody', 'rouletteResultIcon', 'rouletteResultAmount', 'rouletteResultText',
+  'leaderboardModal', 'lbList', 'lbMsg', 'lbLoginBtn', 'lbYou',
+  'powerupsModal', 'powerupsCurrency', 'powerupsList'];
 export function cacheUI() { for (const id of UI_IDS) UI[id] = $(id); }
 export function replayCss(el) { if (!el) return; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
 export function setYell(text) { if (!UI.yell) return; UI.yell.textContent = text; replayCss(UI.yell); }
 export function show(el, on) { if (el) el.classList.toggle('hidden', !on); }
-export const SCREENS = ['menu', 'over', 'pause', 'hud', 'reviveBtn', 'skipIntroBtn', 'shop'];
-export function screens(...ids) { for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0); }
+export const SCREENS = ['menu', 'over', 'overStats', 'pause', 'hud', 'skipIntroBtn', 'shop'];
+export function screens(...ids) {
+  for (const id of SCREENS) show(UI[id], ids.indexOf(id) >= 0);
+  // Sticky-баннер висит только на «спокойных» экранах: меню, магазин, экран смерти.
+  // В забеге и в заставке он перекрывал бы дорогу, поэтому там его снимаем.
+  setSticky(ids.indexOf('menu') >= 0 || ids.indexOf('shop') >= 0 || ids.indexOf('over') >= 0 || ids.indexOf('overStats') >= 0);
+}
 
 export const LANES = [-2.3, 0, 2.3];
 // 8 сегментов по 24 м покрывают минимум 152 м впереди игрока — с запасом перекрывают
@@ -44,20 +52,31 @@ export const BASE_SPEED = 11, MAX_SPEED = 27, ACCEL = 0.24;
 export const SPAWN_AHEAD = 170, DESPAWN_BEHIND = 14;
 export const ROLL_TIME = 0.62;
 export const HIT_W = 0.34, HIT_Z = 0.36, PLATFORM_TOL = 0.28;
-export const FOG_NEAR = 34, FOG_FAR = 130, CAM_FAR = 140; // дальше FOG_FAR туман уже полностью глухой — рисовать там нечего
+// Туман и дальняя плоскость камеры зависят от уровня графики — см. fogNear/fogFar в source/quality.js.
 export const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
 export const CLASS_Z0 = -2.6, CLASS_Z1 = -11.8;
 export const DOOR_HALF = 2.6, DOOR_TOP = 4.6, PART_T = 0.2;
 export const GRANNY_INTRO_X = -1.75;
 export const DESK_TOP_Y = 1.045;
 
-// totalDist/runs/miniGames/questsDone обслуживают систему заданий (source/quests.js):
+// totalDist/runs/miniGames/powerups/questsDone обслуживают систему заданий (source/quests.js):
 // накопленная за все забеги дистанция, число доведённых до конца забегов, число сыгранных
-// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки) и id уже выданных заданий.
+// мини-игр (инкрементируется в source/roulette.js на каждую прокрутку рулетки), число поднятых
+// за всё время паверапов (магнит/х2/сапоги/щит, считается в source/main.js) и id уже выданных заданий.
 // musicVol/soundVol — громкость в процентах (0..100). 0 == полностью выключено, отдельного
 // флага вкл/выкл больше нет: ползунок на нуле и есть «выключено» (см. syncAudioUI).
-export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, questsDone: [], adProgress: {} };
+// powerupLvl: уровень прокачки каждого паверапа (1..4, см. LEVEL_MAX в powerups.js) —
+// каждый уровень выше первого прибавляет ему 5 секунд действия (powerups.js:timeFor; у щита
+// своя таблица времени и зарядов). Старые сейвы без shield получают 1-й уровень в cleanLevels.
+export const save = { best: 0, bottles: 0, currency: 0, ownedSkins: [], selectedSkin: '', ownedPets: [], selectedPet: '', musicVol: 100, soundVol: 100, totalDist: 0, runs: 0, miniGames: 0, powerups: 0, questsDone: [], adProgress: {}, powerupLvl: { magnet: 1, boots: 1, double: 1, shield: 1 } };
 const cleanStrList = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+// Уровни паверапов из сейва: только известные id, клэмп 1..4 (потолок продублирован из
+// powerups.js:LEVEL_MAX — заводить обратный импорт utils.js → powerups.js ради одной константы смысла нет).
+function cleanLevels(v) {
+  const out = { magnet: 1, boots: 1, double: 1, shield: 1 };
+  if (v && typeof v === 'object') for (const id in out) { const n = v[id] | 0; if (n >= 1 && n <= 4) out[id] = n; }
+  return out;
+}
 // adProgress: сколько роликов уже просмотрено за конкретный скин/питомца («skin:punk» -> 2).
 // Обычный объект, а не Map: он как есть уходит в JSON и в облако Яндекса.
 function cleanCounts(v) {
@@ -79,7 +98,8 @@ export function readLocalSave() {
       save.best = s.best | 0; save.bottles = s.bottles | 0; save.musicVol = readVol(s.musicVol, s.music); save.soundVol = readVol(s.soundVol, s.sound);
       save.currency = s.currency | 0; save.ownedSkins = cleanStrList(s.ownedSkins); save.selectedSkin = typeof s.selectedSkin === 'string' ? s.selectedSkin : '';
       save.ownedPets = cleanStrList(s.ownedPets); save.selectedPet = typeof s.selectedPet === 'string' ? s.selectedPet : '';
-      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
+      save.totalDist = s.totalDist | 0; save.runs = s.runs | 0; save.miniGames = s.miniGames | 0; save.powerups = s.powerups | 0; save.questsDone = cleanStrList(s.questsDone); save.adProgress = cleanCounts(s.adProgress);
+      save.powerupLvl = cleanLevels(s.powerupLvl);
     }
   } catch (e) {}
 }
@@ -103,8 +123,20 @@ function syncVolRow(id, v) {
 }
 
 let cloudTimer = null, cloudPending = false;
+// Снимок последнего отправленного в облако состояния. Яндекс отклоняет setData с данными,
+// совпадающими с уже лежащими в облаке («The data does not differ from the previous ones»),
+// но запрос при этом всё равно уходит и тратит лимит обращений, а консоль забивается
+// десятками одинаковых ошибок. Поэтому сверяем payload сами и повтор просто не шлём.
+let lastCloudJson = '';
 export function cloudSave() {
-  Sdk.getPlayer().then(p => p.setData({ best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, questsDone: save.questsDone, adProgress: save.adProgress }, false)).catch(() => {});
+  const data = { best: save.best, bottles: save.bottles, musicVol: save.musicVol, soundVol: save.soundVol, currency: save.currency, ownedSkins: save.ownedSkins, selectedSkin: save.selectedSkin, ownedPets: save.ownedPets, selectedPet: save.selectedPet, totalDist: save.totalDist, runs: save.runs, miniGames: save.miniGames, powerups: save.powerups, questsDone: save.questsDone, adProgress: save.adProgress, powerupLvl: save.powerupLvl };
+  const json = JSON.stringify(data);
+  if (json === lastCloudJson) return;
+  // Метку ставим ДО отправки и при ошибке не откатываем: если Яндекс ответил «данные не
+  // отличаются», в облаке они уже есть, а при сетевом сбое потеря не страшна — в облако
+  // уходит полный снимок, поэтому следующее же изменение перешлёт состояние целиком.
+  lastCloudJson = json;
+  Sdk.getPlayer().then(p => p.setData(data, false)).catch(() => {});
 }
 export function persistSave() {
   try { localStorage.setItem('melEscapeSave', JSON.stringify(save)); } catch (e) {}
@@ -113,9 +145,22 @@ export function persistSave() {
   cloudSave();
   cloudTimer = setTimeout(() => { cloudTimer = null; if (cloudPending) { cloudPending = false; persistSave(); } }, 2500);
 }
+// Немедленная запись в обход дебаунса — для ухода со вкладки и закрытия игры. Без неё прогресс
+// последних 2.5 секунд (купленный скин, добитое задание) оставался только в localStorage и терялся
+// при заходе с другого устройства. cloudPending здесь и есть признак «есть незаписанное»:
+// если его нет, данные уже в облаке и лишний setData только тратит лимит запросов Яндекса.
+export function flushSave() {
+  if (!Sdk.ysdk || !cloudPending) return;
+  cloudPending = false;
+  if (cloudTimer) { clearTimeout(cloudTimer); cloudTimer = null; }
+  cloudSave();
+}
 
 export const Sdk = {
-  ysdk: null, playerPromise: null,
+  // authorized — известен только после checkAuth(); до него считаем игрока анонимом.
+  // Флаг синхронный намеренно: его дёргает интерфейс таблицы лидеров, а ждать промис
+  // на каждое открытие окна незачем — состояние меняется только при входе в аккаунт.
+  ysdk: null, playerPromise: null, lbPromise: null, authorized: false,
   init() {
     return new Promise(res => {
       if (typeof window.YaGames === 'undefined') return res();
@@ -129,13 +174,49 @@ export const Sdk = {
     }
     return this.playerPromise;
   },
+  // getPlayer({scopes:false}) отдаёт игрока и НЕавторизованному — у такого getMode() === 'lite'.
+  // Это единственный способ отличить аккаунт от анонима: данные анонима лежат во временном
+  // хранилище браузера, а в таблицу лидеров его не пускают вовсе.
+  checkAuth() {
+    return this.getPlayer().then(p => { Sdk.authorized = p.getMode() !== 'lite'; return Sdk.authorized; }).catch(() => { Sdk.authorized = false; return false; });
+  },
+  // После входа в аккаунт прежний объект игрока остаётся анонимным и пишет данные не туда,
+  // поэтому кеш сбрасываем целиком. lastCloudJson — вместе с ним: снимок «это уже в облаке»
+  // относился к хранилищу анонима, а аккаунт своей копии ещё не видел.
+  resetPlayer() { this.playerPromise = null; lastCloudJson = ''; },
+  // Окно входа Яндекса. Вызывать ТОЛЬКО из обработчика клика: автоматический показ
+  // площадка блокирует, и это повод для отказа на модерации. Промис отклоняется,
+  // если игрок закрыл окно, — это нормальный сценарий, а не ошибка.
+  login() {
+    const y = this.ysdk;
+    if (!y || !y.auth || !y.auth.openAuthDialog) return Promise.reject(new Error('no sdk'));
+    return y.auth.openAuthDialog().then(() => { Sdk.resetPlayer(); return Sdk.checkAuth(); });
+  },
+  // Доступ к имени и аватару (scopes:true) спрашиваем ОТДЕЛЬНО и только после входа: игрок
+  // сам нажал «Войти» ради таблицы рекордов, поэтому вопрос уместен именно там, а на старте
+  // игры лишнее окно разрешений только отпугивает — потому основной getPlayer и идёт со
+  // scopes:false. Отказ ничего не ломает: авторизация уже состоялась, просто своя строка
+  // в таблице останется без имени. Успех — подменяем кеш игрока на «полный».
+  askName() {
+    const y = this.ysdk;
+    if (!y || !y.getPlayer) return Promise.resolve();
+    try { return y.getPlayer({ scopes: true }).then(p => { Sdk.playerPromise = Promise.resolve(p); }).catch(() => {}); } catch (e) { return Promise.resolve(); }
+  },
+  // Объект таблиц лидеров кешируем так же, как игрока: getLeaderboards() — сетевой вызов.
+  getLeaderboards() {
+    if (!this.ysdk || !this.ysdk.getLeaderboards) return Promise.reject(new Error('no sdk'));
+    if (!this.lbPromise) {
+      try { this.lbPromise = this.ysdk.getLeaderboards(); this.lbPromise.catch(() => { Sdk.lbPromise = null; }); } catch (e) { return Promise.reject(e); }
+    }
+    return this.lbPromise;
+  },
   feature(api, method) { try { const f = Sdk.ysdk && Sdk.ysdk.features && Sdk.ysdk.features[api]; if (f) f[method](); } catch (e) {} },
   loadingReady() { Sdk.feature('LoadingAPI', 'ready'); },
   gameplayStart() { Sdk.feature('GameplayAPI', 'start'); },
   gameplayStop() { Sdk.feature('GameplayAPI', 'stop'); },
   loadCloud() {
     if (!this.ysdk) return Promise.resolve(false);
-    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'questsDone', 'adProgress'])).then(d => {
+    return this.getPlayer().then(p => p.getData(['best', 'bottles', 'music', 'sound', 'musicVol', 'soundVol', 'currency', 'ownedSkins', 'selectedSkin', 'ownedPets', 'selectedPet', 'totalDist', 'runs', 'miniGames', 'powerups', 'questsDone', 'adProgress', 'powerupLvl'])).then(d => {
       if (d && typeof d.best === 'number') {
         save.best = Math.max(save.best, d.best | 0); save.bottles = Math.max(save.bottles, d.bottles | 0);
         // Только если в облаке эти поля вообще есть: иначе пустая облачная запись
@@ -154,11 +235,16 @@ export const Sdk = {
         if (typeof d.totalDist === 'number') save.totalDist = Math.max(save.totalDist, d.totalDist | 0);
         if (typeof d.runs === 'number') save.runs = Math.max(save.runs, d.runs | 0);
         if (typeof d.miniGames === 'number') save.miniGames = Math.max(save.miniGames, d.miniGames | 0);
+        if (typeof d.powerups === 'number') save.powerups = Math.max(save.powerups, d.powerups | 0);
         for (const id of cleanStrList(d.questsDone)) if (save.questsDone.indexOf(id) < 0) save.questsDone.push(id);
         // Просмотренные за вещь ролики мёржим по каждому ключу отдельно: на другом
         // устройстве могли досмотреть больше, терять это нечестно.
         const cloudAds = cleanCounts(d.adProgress);
         for (const k in cloudAds) if (cloudAds[k] > (save.adProgress[k] | 0)) save.adProgress[k] = cloudAds[k];
+        // Уровни паверапов — по каждому баффу отдельно максимум, той же логикой, что adProgress:
+        // они только растут, а понижать прокачку при мёрже между устройствами нечестно.
+        const cloudLv = cleanLevels(d.powerupLvl);
+        for (const id in save.powerupLvl) if (cloudLv[id] > save.powerupLvl[id]) save.powerupLvl[id] = cloudLv[id];
       }
       return true;
     }).catch(() => false);
@@ -173,21 +259,62 @@ export function withTimeout(p, ms) {
 
 export let adBusy = false;
 export function setAdBusy(v) { adBusy = v; }
-let lastInterstitial = Date.now();
-export function maybeInterstitial(then) {
+// Пауза между межстраничными роликами. Яндекс требует минимум 60 секунд, берём с запасом.
+const INTERSTITIAL_GAP = 75000;
+// Пауза после НЕсостоявшегося показа (нет заполнения, оффлайн). Ждать полные 75 секунд из-за
+// рекламы, которой не было, незачем, но и дёргать SDK на каждой смерти не стоит.
+const INTERSTITIAL_RETRY = 20000;
+// Одна метка на всю рекламу: отсчёт идёт от ЛЮБОГО показанного ролика, включая rewarded из
+// магазина и меню. Иначе связка «посмотрел ролик за пузырики → вышел → умер» выдавала
+// межстраничную сразу поверх только что закрытой награды.
+let nextInterstitialAt = Date.now() + INTERSTITIAL_GAP;
+export function adWasShown() { nextInterstitialAt = Date.now() + INTERSTITIAL_GAP; }
+
+// force = true — показать невзирая на наш собственный кулдаун (смерть в забеге и прокрут
+// рулетки: по требованию реклама идёт после КАЖДОГО такого события). Сам Яндекс всё равно
+// не отдаст межстраничную чаще одного раза в 60 секунд — в этом случае придёт
+// onClose(wasShown=false), и мы просто идём дальше без задержки.
+export function maybeInterstitial(then, force) {
   const next = typeof then === 'function' ? then : () => {};
   const y = Sdk.ysdk;
-  if (!y || !y.adv || adBusy || Date.now() - lastInterstitial < 75000) { next(); return; }
-  lastInterstitial = Date.now(); adBusy = true; let done = false, opened = false;
-  const finish = () => { if (done) return; done = true; adBusy = false; Sound.resumeAll(); next(); };
-  const guard = setTimeout(() => { if (!opened) finish(); }, 5000);
+  if (!y || !y.adv || adBusy || (!force && Date.now() < nextInterstitialAt)) { next(); return; }
+  adBusy = true; let done = false, opened = false;
+  // shown приходит из onClose(wasShown). Раньше кулдаун ставился ДО показа, поэтому
+  // несостоявшийся ролик съедал полторы минуты честного показа.
+  const finish = shown => {
+    if (done) return; done = true; adBusy = false;
+    nextInterstitialAt = Date.now() + (shown ? INTERSTITIAL_GAP : INTERSTITIAL_RETRY);
+    Sound.resumeAll(); next();
+  };
+  const guard = setTimeout(() => { if (!opened) finish(false); }, 5000);
   try {
     y.adv.showFullscreenAdv({ callbacks: {
       onOpen: () => { opened = true; clearTimeout(guard); Sound.pauseAll(); },
-      onClose: () => { clearTimeout(guard); finish(); }, onError: () => { clearTimeout(guard); finish(); }, onOffline: () => { clearTimeout(guard); finish(); }
+      // wasShown может не прийти вовсе — тогда считаем, что показ был (строгое !== false).
+      onClose: wasShown => { clearTimeout(guard); finish(wasShown !== false); },
+      onError: () => { clearTimeout(guard); finish(false); }, onOffline: () => { clearTimeout(guard); finish(false); }
     }});
-  } catch (e) { clearTimeout(guard); finish(); }
+  } catch (e) { clearTimeout(guard); finish(false); }
 }
+// ===== Sticky-баннер =====
+// Баннер рисует сама платформа поверх игрового окна: своего DOM-элемента у него нет,
+// доступны только «показать» и «скрыть». Состояние держим у себя, чтобы не дёргать SDK
+// повторно одним и тем же — showBannerAdv на уже показанном баннере просто тратит вызов.
+let stickyOn = false;
+export function setSticky(on) {
+  on = !!on;
+  const y = Sdk.ysdk;
+  if (!y || !y.adv || !y.adv.showBannerAdv) return;
+  if (on === stickyOn) return;
+  stickyOn = on;
+  // Обе функции возвращают промис (у скрытия — с reason при отказе); свой catch обязателен,
+  // иначе отказ площадки прилетит как unhandled rejection в консоль игрока.
+  try {
+    const p = on ? y.adv.showBannerAdv() : y.adv.hideBannerAdv();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+
 export function showRewarded(onReward, onFail) {
   const y = Sdk.ysdk;
   if (!y || !y.adv || adBusy) return onFail();
@@ -195,7 +322,8 @@ export function showRewarded(onReward, onFail) {
   const finish = () => { if (done) return; done = true; adBusy = false; Sound.resumeAll(); got ? onReward() : onFail(); };
   try {
     y.adv.showRewardedVideo({ callbacks: {
-      onOpen: () => Sound.pauseAll(), onRewarded: () => { got = true; }, onClose: finish, onError: finish
+      // adWasShown именно в onOpen: отодвигаем межстраничную только когда ролик реально открылся.
+      onOpen: () => { adWasShown(); Sound.pauseAll(); }, onRewarded: () => { got = true; }, onClose: finish, onError: finish
     }});
   } catch (e) { finish(); }
 }
@@ -273,17 +401,29 @@ export const Sound = {
   land() { if (this.sfx('action')) return; this.noise(0.12, 0.1, 500); },
   roll() { if (this.sfx('action')) return; this.noise(0.28, 0.14, 700); },
   flip() { if (this.sfx('action')) return; this.noise(0.26, 0.09, 1800); this.tone(420, 900, 0.22, 'triangle', 0.09); },
-  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с чекушкой.
+  // интро-сцена со столом училки: свой ключ банка, чтобы не делить звук с пузыриком.
   // Пока файла assets/sounds/book.mp3 нет — играет шорох страниц (синтез).
   book() { if (this.sfx('book')) return; this.noise(0.18, 0.12, 2600); this.tone(520, 380, 0.14, 'triangle', 0.07); },
   coin() { if (this.sfx('coin')) return; const t = this.ctx ? this.sfxTime() : 0; this.tone(1318, 1318, 0.07, 'sine', 0.16, t); this.tone(1760, 1760, 0.12, 'sine', 0.16, t + 0.07); },
   lane() { if (this.sfx('action')) return; this.noise(0.09, 0.06, 1400); },
   // Поднятый паверап (source/powerups.js). Свой ключ банка — assets/sounds/powerup.mp3;
-  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычная чекушка.
+  // пока файла нет, играет восходящее трезвучие: слышно, что это НЕ обычный пузырик.
   powerup() {
     if (this.sfx('powerup')) return; const t = this.ctx ? this.sfxTime() : 0;
     this.tone(660, 660, 0.09, 'square', 0.13, t); this.tone(880, 880, 0.09, 'square', 0.13, t + 0.07);
     this.tone(1320, 1760, 0.22, 'triangle', 0.14, t + 0.14);
+  },
+  // Щит (source/powerups.js) принял удар: звонкий «бум» по стеклу. Щит сломался (заряды кончились):
+  // тот же удар плюс осыпающийся шорох и падающий тон. Ключи банка shield_hit / shield_break — как у
+  // powerup, в таблицу SFX (audio.js) они не внесены, поэтому пока звучит только синтез.
+  shieldHit() {
+    if (this.sfx('shield_hit')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(520, 260, 0.25, 'triangle', 0.18, t); this.tone(1560, 1040, 0.18, 'sine', 0.1, t);
+  },
+  shieldBreak() {
+    if (this.sfx('shield_break')) return; const t = this.ctx ? this.sfxTime() : 0;
+    this.tone(520, 260, 0.25, 'triangle', 0.18, t); this.noise(0.45, 0.16, 3200);
+    this.tone(1760, 440, 0.4, 'square', 0.06, t + 0.05);
   },
   // warn/death тоже делят один ключ ('hit') — та же логика общего пула.
   stumble() { if (this.sfx('hit')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
@@ -306,7 +446,7 @@ export const Sound = {
   },
   // Fallback — СВОЙ синтез, а не делегирование в stumble(): та теперь сама проверяет
   // общий банк-ключ 'hit', и если у тебя уже есть hit.mp3 (для столкновений), но ещё нет
-  // ui_denied.mp3, магазин при нехватке чекушек играл бы чужой звук столкновения.
+  // ui_denied.mp3, магазин при нехватке пузыриков играл бы чужой звук столкновения.
   denied() { if (this.sfx('ui_denied')) return; this.tone(160, 90, 0.22, 'sawtooth', 0.2); this.noise(0.2, 0.14, 600); },
   // Успешная покупка в магазине. Своего синтеза нет — за неимением purchase.mp3 звучит
   // звук монеты (coin.mp3, а нет и его — синтезированный «дзынь»), это уместный дефолт.

@@ -1,0 +1,12 @@
+<!doctype html>
+<!-- Дев-вход: обычная игра + админ-панель (dev/admin.js). Открывать: http://localhost:8080/dev/index.html
+     Берёт АКТУАЛЬНЫЙ ../index.html, подставляет <base href="../"> (чтобы пути source/, assets/ работали)
+     и дописывает скрипт панели. Папка dev/ в релиз не попадает (build_release.ps1 её не берёт). -->
+<meta charset="utf-8">
+<script>
+fetch('../index.html').then(r => r.text()).then(html => {
+  html = html.replace(/<head>/i, '<head><base href="../">')
+             .replace(/<\/body>/i, '<script type="module" src="dev/admin.js"></scr' + 'ipt></body>');
+  document.open(); document.write(html); document.close();
+});
+</script>

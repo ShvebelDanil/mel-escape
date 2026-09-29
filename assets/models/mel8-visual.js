@@ -327,6 +327,10 @@ export function createMelVisual(THREE, GFX, options = {}) {
   diary.rotation.x = Math.PI / 2;
   diary.visible = false;
 
+  // Магнит (бафф "магнит") зажат в центре левой кисти за середину дуги (руку отводит main.js).
+  const magnet = put(armL, GFX.buildMagnetMesh(), 0, -.768, 0);
+  magnet.visible = false;
+
   // ============================ НОГИ ============================
   function leg(x) {
     const l = put(inner, new THREE.Group(), x, .92, 0);
@@ -366,9 +370,18 @@ export function createMelVisual(THREE, GFX, options = {}) {
   }
   const legL = leg(-.165);
   const legR = leg(.165);
+  // Крылатые сапоги (бафф "сапоги") — кожух поверх тяжёлых ботинок (рант .285×.467 на z .06,
+  // низ каблука -.9475) и напуска штанины (.33×.335 на z .01, до -.6575). Прежняя манжета была уже
+  // напуска и пряталась в нём целиком — теперь голенище .40 с запасом накрывает его.
+  // Напуски левой и правой штанины (±.165 при ногах на ±.165) уже смыкаются в центре, поэтому
+  // здесь голенище с внутренней стороны доходит до средней линии и чуть за неё (.005): сапоги
+  // одинаковые и одного цвета, пересечение внутри не видно, а щели с чёрной штаниной не остаётся.
+  const BOOT = { w: .40, len: .56, h: .385, sw: .42, sd: .40, sz: -.05, dx: .04 };
+  const bootL = put(legL, GFX.buildBootMesh(-1, BOOT), -BOOT.dx, -.945, .06); bootL.visible = false;
+  const bootR = put(legR, GFX.buildBootMesh(1, BOOT), BOOT.dx, -.945, .06); bootR.visible = false;
 
   // Тень лежит на root (вне pivot), поэтому её радиус уменьшаем тем же коэффициентом вручную.
   const shadow = GFX.shadowDisc(root, .62 * SCALE, GFX.SHADOW_MAT_CHAR);
 
-  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary };
+  return { root, pivot, inner, legL, legR, armL, armR, headG, shadow, diary, magnet, bootL, bootR };
 }

@@ -79,6 +79,12 @@ export function createMelVisual(THREE, GFX, options = {}) {
     return l;
   }
   const legL=leg(-.15),legR=leg(.15);
+  // Крылатые сапоги (бафф "сапоги") — кожух поверх кроссовка (подошва .255×.40 на z .066, низ -.7475)
+  // и штанины (.225×.25): стопа и голенище с запасом шире, штатная обувь целиком внутри.
+  // dx .04 — внутренняя кромка подошвы в .005 от средней линии (ноги на ±.15).
+  const BOOT={w:.35,len:.48,h:.35,sw:.32,sd:.32,sz:-.066,dx:.04};
+  const bootL=put(legL,GFX.buildBootMesh(-1,BOOT),-BOOT.dx,-.7475,.066);bootL.visible=false;
+  const bootR=put(legR,GFX.buildBootMesh(1,BOOT),BOOT.dx,-.7475,.066);bootR.visible=false;
   function arm(x) {
     const a=put(inner,new THREE.Group(),x,1.46,0);
     put(a,rounded(.175,.50,.20,limbMat,.023),0,-.22,0);
@@ -93,6 +99,8 @@ export function createMelVisual(THREE, GFX, options = {}) {
   }
   const armL=arm(-.39),armR=arm(.39);
   const diary=put(armR,GFX.buildDiaryMesh(),0,-.64,.14);diary.rotation.x=Math.PI/2;diary.visible=false;
+  // Магнит (бафф "магнит") зажат в центре левой кисти за середину дуги (руку отводит main.js).
+  const magnet=put(armL,GFX.buildMagnetMesh(),0,-.52,0);magnet.visible=false;
   const headG=put(inner,new THREE.Group(),0,1.78,0);
   const skull=put(headG,sphere(1,skin,24,14),0,.005,0);skull.scale.set(.245,.285,.233);
   const jaw=put(headG,sphere(1,skin,12,8),0,-.115,.025);jaw.scale.set(.192,.155,.19);
@@ -155,5 +163,5 @@ export function createMelVisual(THREE, GFX, options = {}) {
   const chainPoints=[];for(let i=0;i<=18;i++){const a=Math.PI*i/18;chainPoints.push(new THREE.Vector3(-.145*Math.cos(a),1.475-.12*Math.sin(a),.195));}
   put(inner,new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(chainPoints),18,.007,4,false),mat('#c2a363')));
   const shadow=GFX.shadowDisc(root,.52,GFX.SHADOW_MAT_CHAR);
-  return {root,pivot,inner,legL,legR,armL,armR,headG,shadow,diary};
+  return {root,pivot,inner,legL,legR,armL,armR,headG,shadow,diary,magnet,bootL,bootR};
 }

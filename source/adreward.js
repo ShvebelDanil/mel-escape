@@ -1,10 +1,12 @@
 import * as U from './utils.js';
 import * as SHOP from './shop.js';
 import * as QST from './quests.js';
+import { t } from './i18n.js';
 
-// Награда за просмотр rewarded-рекламы: плюсик у бейджа чекушек в меню.
+// Награда за просмотр rewarded-рекламы: плюсик у бейджа пузыриков в меню.
 // Здесь же — единственное место настройки фичи.
-export const AD_REWARD = 100;              // чекушек за один досмотренный ролик
+// Цена вещей в роликах от AD_REWARD НЕ зависит — у неё своя формула (adsFor в конце файла).
+export const AD_REWARD = 250;              // пузыриков за один досмотренный ролик
 export const AD_COOLDOWN_MS = 3 * 60 * 1000; // пауза между наградами, мс
 
 // lastRewardAt намеренно не пишется в сейв: кулдаун защищает от кликания подряд
@@ -40,8 +42,8 @@ function syncBtn() {
 
 export function open() {
   QST.closeAll();
-  if (leftMs() > 0) setState('wait', 'Подожди', 'Награда за рекламу уже получена. Следующая — через ' + mmss(leftMs()) + '.', 'Ок');
-  else setState('ask', 'Бонус', 'Посмотреть рекламу за ' + AD_REWARD + ' чекушек?', 'Смотреть');
+  if (leftMs() > 0) setState('wait', t('ad.waitTitle'), t('ad.waitText', { time: mmss(leftMs()) }), t('modal.ok'));
+  else setState('ask', t('ad.title'), t('ad.askText', { n: AD_REWARD }), t('ad.watch'));
   U.show(U.UI.adRewardModal, true);
 }
 export function close() { if (!pending) U.show(U.UI.adRewardModal, false); }
@@ -52,7 +54,7 @@ function grant() {
   SHOP.refreshCurrency();  // бейджи меню и магазина
   lastRewardAt = Date.now();
   syncBtn();
-  setState('ok', 'Готово', '+' + AD_REWARD + ' чекушек зачислено!', 'Отлично');
+  setState('ok', t('ad.okTitle'), t('ad.okText', { n: AD_REWARD }), t('ad.okBtn'));
 }
 
 function watch() {
@@ -62,10 +64,10 @@ function watch() {
   // выдаём награду сразу, иначе фичу нельзя было бы проверить.
   if (!y || !y.adv) { grant(); return; }
   pending = true;
-  setState('wait', 'Реклама', 'Загружаем ролик…', '');
+  setState('wait', t('ad.loadTitle'), t('ad.loadText'), '');
   U.showRewarded(
     () => { pending = false; grant(); },
-    () => { pending = false; setState('err', 'Не вышло', 'Награда не засчитана: ролик не был досмотрен до конца или реклама сейчас недоступна.', 'Понятно'); }
+    () => { pending = false; setState('err', t('ad.errTitle'), t('ad.errText'), t('ad.errBtn')); }
   );
 }
 
@@ -86,10 +88,30 @@ export function initAdReward() {
 }
 
 // ===== Покупка вещей за ролики (магазин, source/shop.js) =====
-// Сколько роликов стоит вещь: её цена, делённая на награду за один ролик в меню.
-// Округляем вверх и не даём опуститься ниже одного — дешёвые вещи стоят 1 ролик.
-// Формула живая: поменяли AD_REWARD или цену в skins.js/pets.js — число само пересчиталось.
-export const adsFor = price => Math.max(1, Math.ceil((price | 0) / AD_REWARD));
+// Сколько роликов стоит вещь: floor(C / (AD_BASE + floor(C / AD_STEP))), C — цена в пузыриках.
+// «Курс» одного ролика растёт вместе с ценой (105 пузыриков у 500, 200 у 10000), поэтому
+// дешёвые вещи больше не отдаются за 2 ролика, а дорогие не превращаются в сотню просмотров:
+//   500 → 4, 1000 → 9, 2000 → 16, 3000 → 23, 5000 → 33, 10000 → 50.
+// Ниже одного ролика не опускаемся (защита на случай очень дешёвых вещей).
+// Формула живая: поменяли цену в skins.js/pets.js — число само пересчиталось.
+// Каждый досмотренный ролик ещё и снижает цену в пузыриках (adPrice ниже).
+const AD_BASE = 100, AD_STEP = 100;
+export function adsFor(price) {
+  const c = Math.max(0, price | 0);
+  return Math.max(1, Math.floor(c / (AD_BASE + Math.floor(c / AD_STEP))));
+}
+
+// Цена в пузыриках после seen досмотренных роликов: каждый ролик снимает C/N (N = adsFor(C)),
+// то есть цена = C·(N − seen)/N и на последнем ролике доходит до нуля — вещь выдаётся даром.
+// Промежуточная цена округляется ВВЕРХ до PRICE_ROUND: круглые числа на ценнике,
+// и скидка никогда не больше честной доли. Считаем в целых, чтобы не ловить 0.9999.
+const PRICE_ROUND = 10;
+export function adPrice(price, seen) {
+  const c = Math.max(0, price | 0), n = adsFor(c), k = Math.min(Math.max(0, seen | 0), n);
+  if (k === 0) return c;
+  const left = Math.ceil(c * (n - k) / n / PRICE_ROUND) * PRICE_ROUND;
+  return Math.min(c, left);
+}
 
 // Показать ролик «за вещь». Кулдаун плюсика здесь намеренно не действует: он сдерживает
 // фарм валюты, а вещь и так стоит несколько просмотров подряд.

@@ -1,19 +1,27 @@
 import * as U from './utils.js';
 import * as GFX from './graphics.js';
-import { createPetVisual as petCat } from '../assets/models/pet-cat-visual.js';
 import { createPetVisual as petCatost } from '../assets/models/pet-catost-visual.js';
 import { createPetVisual as petRabbitBurmaldaets } from '../assets/models/pet-rabbit-burmaldaets-visual.js';
 
 // Первый элемент — «без питомца», всегда доступен и ничего не строит.
+// Дальше — по возрастанию цены (порядок массива = порядок карусели в магазине).
 // Чтобы добавить нового питомца — достаточно дописать сюда одну строку.
+// nameKey/descKey — ключи словаря source/i18n.js (см. комментарий в skins.js).
+// Бафы питомца (необязательные поля, по умолчанию 1 — «без бонуса»):
+//   distK   — множитель засчитанных метров (счётчик, рекорд, лидерборд, задания);
+//   bottleK — множитель пузыриков за каждый подобранный на трассе.
+//   hud     — ключ иконки в textures.js:MANIFEST для постоянной плашки бафа в HUD (powerups.js:setPetBuff).
+// Трасса и её сложность считаются по реальному пути, бафы трогают только награду.
+// Строку бонуса в магазине shop.js собирает из этих же чисел — текст не разъедется с логикой.
 export const PETS = [
-  { id: 'none', name: 'БЕЗ ПИТОМЦА', price: 0, desc: 'Мэл бежит налегке, без спутника.', build: null },
-  { id: 'cat', name: 'КОТИК', price: 5, desc: 'Пушистый и ленивый, но всегда рядом.', build: petCat },
-  { id: 'catost', name: 'Котость', price: 8, desc: 'Круглый трехцветный кот, который всегда рядом.', build: petCatost },
-  { id: 'rabbitBurmaldaets', name: 'Заяц Бурмалдаец', price: 10, desc: 'Очень толстый заяц с покер-фейсом.', build: petRabbitBurmaldaets }
+  { id: 'none', nameKey: 'pet.none.name', price: 0, descKey: 'pet.none.desc', build: null },
+  { id: 'rabbitBurmaldaets', nameKey: 'pet.rabbitBurmaldaets.name', price: 3000, descKey: 'pet.rabbitBurmaldaets.desc', build: petRabbitBurmaldaets, distK: 1.25, hud: 'bunnyPowerup' },
+  { id: 'catost', nameKey: 'pet.catost.name', price: 10000, descKey: 'pet.catost.desc', build: petCatost, bottleK: 1.25, hud: 'catPowerup' }
 ];
 
 export const findPet = id => PETS.find(p => p.id === id) || PETS[0];
+export const distK = p => p.distK || 1;
+export const bottleK = p => p.bottleK || 1;
 export function isOwned(id) {
   const p = PETS.find(x => x.id === id);
   return !!p && (p.price === 0 || U.save.ownedPets.indexOf(id) >= 0);
@@ -29,10 +37,12 @@ export function buildPetNode(id) {
   return n;
 }
 
-export function buy(id) {
+// cost — цена со скидкой за досмотренные ролики (ADR.adPrice в shop.js); без него — полная.
+export function buy(id, cost) {
   const p = findPet(id);
-  if (isOwned(id) || U.save.currency < p.price) return false;
-  U.save.currency -= p.price;
+  const c = cost == null ? p.price : cost;
+  if (isOwned(id) || U.save.currency < c) return false;
+  U.save.currency -= c;
   U.save.ownedPets.push(id);
   U.persistSave();
   return true;

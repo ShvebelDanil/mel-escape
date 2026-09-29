@@ -7,6 +7,18 @@
 <!-- Текстура монеты нужна и WebGL, и иконкам HUD: просим браузер начать качать её сразу,
      параллельно с three.js. Браузер без WebP пропустит строку из-за type и возьмёт .png из JS. -->
 <link rel="preload" as="image" type="image/webp" href="assets/textures/bottle.webp">
+<!-- Скрипты подключены здесь и все с defer. defer НЕ означает «как получится»: отложенные
+     классические скрипты и модули выполняются строго в порядке объявления, после разбора HTML.
+     Поэтому YaGames точно существует к запуску main.js, а THREE — к его импортам. Зачем так:
+     SDK отдаётся с чужого хоста и может отвечать медленно; подключённый синхронно, он останавливал
+     разбор документа и вместе с собой тормозил three.js и всю загрузку.
+     Адрес обязан быть именно https://yandex.ru/games/sdk/v2 — это документированная точка входа.
+     Прямой адрес файла в хранилище Яндекса (стоял здесь раньше) подставлять нельзя: проверка
+     архива в консоли разработчика считает его ссылкой на внутреннее хранилище сервиса и
+     отклоняет сборку. Подробности — в aboutProject.md. -->
+<script defer src="https://yandex.ru/games/sdk/v2"></script>
+<script defer src="lib/three.min.js"></script>
+<script type="module" src="source/main.js"></script>
 <style>
   /* Общие цвета всплывающих окон: тёмно-серая панель и затемнение сцены под ней.
      Намеренно БЕЗ backdrop-filter: размытие фона заставляет браузер держать копию всего
@@ -25,22 +37,26 @@
   #game { position:fixed; inset:0; }
   #game canvas { display:block; width:100%; height:100%; }
 
+  /* Затемнение — вертикальный градиент, а не плоская заливка: центр экрана светлее, края глуше,
+     поэтому панель читается «над сценой» без размытия. Градиент растеризуется один раз в слой
+     и дальше только композитится, то есть в кадре стоит ноль. */
   .overlay {
     position:fixed; inset:0; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px;
     z-index:10; padding:20px; text-align:center;
-    background:rgba(10,20,16,0.55);
-    -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    background:linear-gradient(180deg, rgba(8,16,13,0.74) 0%, rgba(10,20,16,0.62) 45%, rgba(8,16,13,0.76) 100%);
   }
   .overlay.hidden, .hidden { display:none !important; }
-  .transparent-bg { background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+  .transparent-bg { background:transparent; pointer-events:none; }
 
   h1.logo {
     font-size:clamp(34px, 9vw, 66px); line-height:1.04; font-weight:900;
     color:#ffd94a; letter-spacing:1px; text-transform:uppercase; text-align:center;
     text-shadow:0 3px 0 #7a4b00, 0 6px 14px rgba(0,0,0,0.6);
   }
-  h1.logo span { display:block; color:#fff; font-size:0.62em; text-shadow:0 3px 0 #333, 0 6px 14px rgba(0,0,0,0.6); }
+  /* .sub, а не просто span: имя игры тоже завёрнуто в span (для подстановки перевода),
+     и без класса подзаголовочный стиль применялся бы к обеим строкам. */
+  h1.logo span.sub { display:block; color:#fff; font-size:0.62em; text-shadow:0 3px 0 #333, 0 6px 14px rgba(0,0,0,0.6); }
 
   .btn {
     appearance:none; border:none; cursor:pointer;
@@ -73,7 +89,6 @@
     border-radius:18px; padding:14px 26px; display:flex; gap:26px; align-items:center;
   }
   .stat { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:86px; }
-  #over .stats-box { justify-content:center; gap:28px; }
   .stat .v { font-size:clamp(22px,5vw,30px); font-weight:900; color:#ffd94a; display:flex; align-items:center; gap:6px; }
   .stat .l { font-size:12px; color:#b8ccbe; text-transform:uppercase; letter-spacing:1px; }
   .stat .v img { height:1em; }
@@ -95,18 +110,41 @@
   #loading .lt { color:#cfe8d8; font-size:15px; }
 
   #hud { z-index:5; justify-content:flex-start; align-items:stretch; flex-direction:row;
-    background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+    background:transparent; pointer-events:none; }
   #hudRight {
     position:absolute; top:calc(10px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right));
     display:flex; flex-direction:column; align-items:flex-end; gap:4px;
   }
-  #score { font-size:clamp(24px,6vw,44px); font-weight:900; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5); }
-  #score small { font-size:0.55em; font-weight:700; opacity:.85; }
-  #bottleCount {
-    color:#fff; text-shadow:0 2px 0 rgba(0,0,0,0.5);
-    font-size:clamp(19px,5vw,34px); font-weight:900; display:flex; align-items:center; gap:6px;
+  /* Показатели забега читаются поверх любого фона — от тёмного пола до белого потолка —
+     за счёт контурной обводки, а не плашки. paint-order:stroke fill кладёт обводку ПОД
+     заливку, поэтому буквы не «худеют», как было бы при обычном text-stroke.
+     Толщина в em, чтобы контур масштабировался вместе со шрифтом.
+     Размер через vmin, а не vw: на широком мониторе vw даёт огромное число и упирается
+     в потолок clamp, из-за чего HUD выглядел мелким. vmin считает по короткой стороне. */
+  #score, #bottleCount {
+    -webkit-text-stroke:0.07em rgba(0,0,0,0.62); paint-order:stroke fill;
+    text-shadow:0 2px 6px rgba(0,0,0,0.45);
   }
-  #bottleCount img { height:1em; }
+  /* Золотой — средняя точка градиента кнопки «Играть» (#ffe066 → #ffb400), а не его
+     светлый верхний стоп: именно так кнопка читается целиком, и насыщенный тон не блёкнет
+     на бежевых стенах школы. Метры сразу отделяются цветом от белых пузыриков. */
+  #score { font-size:clamp(26px,5.6vmin,54px); font-weight:900; color:#ffca33; }
+  #score small { font-size:0.55em; font-weight:700; opacity:.9; }
+  #bottleCount {
+    color:#fff; font-size:clamp(20px,4.3vmin,40px); font-weight:900;
+    display:flex; align-items:center; gap:6px;
+  }
+  /* Иконке обводка не нужна (это PNG) — ей хватает тени, чтобы не теряться на потолке. */
+  #bottleCount img { height:1em; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55)); }
+
+  /* Мягкое затемнение верха кадра под HUD. Не рамка и не окно: градиент уходит в полную
+     прозрачность, границы не видно, но фон под цифрами всегда темнее текста.
+     Обычная заливка слоя — ни layout, ни перерисовки в кадре не стоит. */
+  #hudFade {
+    position:absolute; top:0; left:0; right:0; height:clamp(110px,20vmin,190px);
+    pointer-events:none;
+    background:linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.16) 55%, rgba(0,0,0,0) 100%);
+  }
   #pauseBtn {
     position:absolute; top:calc(10px + env(safe-area-inset-top)); left:calc(14px + env(safe-area-inset-left));
     pointer-events:auto; cursor:pointer; appearance:none; border:1px solid rgba(255,255,255,0.25);
@@ -121,11 +159,50 @@
   }
   #comboText span {
     display:inline-block; font-size:clamp(24px,6.5vw,36px); font-weight:900; color:#ffe066;
-    text-shadow:0 2px 0 rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+    -webkit-text-stroke:0.07em rgba(0,0,0,0.62); paint-order:stroke fill;
+    text-shadow:0 2px 10px rgba(0,0,0,0.5);
   }
   #comboText.on { opacity:1; }
   #comboText.on span { animation:comboPop .3s ease; }
   @keyframes comboPop { 0%{transform:scale(0.4);} 60%{transform:scale(1.22);} 100%{transform:scale(1);} }
+
+  /* Бонусы питомцев — фиолетовые всплывашки. Отдельные элементы, а не часть #comboText:
+     у комбо случайный сдвиг на каждый пузырик, всплывашка от него не дёргается.
+     Анимация — только transform и opacity (композитинг), перезапуск — U.replayCss.
+     #comboBonus — «+1» пузырик от Котости под комбо; #meterBonus — «+25 м» от зайца
+     слева от счётчика метров (внутри #hudRight, поэтому держится за его правый край). */
+  #comboBonus, #meterBonus {
+    position:absolute; opacity:0; pointer-events:none; white-space:nowrap;
+    font-weight:900; color:#c77dff; -webkit-text-stroke:0.07em rgba(0,0,0,0.62); paint-order:stroke fill;
+    text-shadow:0 2px 8px rgba(0,0,0,0.5), 0 0 12px rgba(199,125,255,0.55);
+  }
+  #comboBonus { top:calc(142px + env(safe-area-inset-top)); right:calc(20px + env(safe-area-inset-right)); font-size:clamp(20px,5vw,28px); z-index:6; }
+  #meterBonus { top:0.35em; right:calc(100% + 10px); font-size:clamp(17px,3.4vmin,30px); }
+  #meterBonus small { font-size:0.62em; font-weight:700; }
+  #comboBonus.on { animation:petBonus 1.1s cubic-bezier(.2,.9,.3,1) both; }
+  /* «+25 м» выпрыгивает слева от метров и влетает в счётчик. Конец анимации = момент, когда
+     main.js прибавляет метры (METER_FLY = 0.62 с), и тут же #score.on — фиолетовая вспышка. */
+  #meterBonus.on { animation:meterFly 0.62s linear both; }
+  @keyframes meterFly {
+    0%   { opacity:0; transform:translateX(-6px) scale(0.5); animation-timing-function:cubic-bezier(.2,1.4,.4,1); }
+    25%  { opacity:1; transform:translateX(0) scale(1.15); animation-timing-function:ease-out; }
+    55%  { opacity:1; transform:translateX(0) scale(1); animation-timing-function:cubic-bezier(.6,0,.9,.6); }
+    100% { opacity:0.2; transform:translateX(2.4em) scale(0.45); }
+  }
+  #score { transform-origin:100% 50%; }
+  #score.on { animation:scoreBump 0.55s cubic-bezier(.2,.9,.3,1); }
+  @keyframes scoreBump {
+    0%   { transform:scale(1); color:#ffca33; }
+    22%  { transform:scale(1.22); color:#d9a6ff; }
+    100% { transform:scale(1); color:#ffca33; }
+  }
+  @keyframes petBonus {
+    0%   { opacity:0; transform:translateY(8px) scale(0.5); }
+    18%  { opacity:1; transform:translateY(0) scale(1.18); }
+    32%  { transform:translateY(0) scale(1); }
+    70%  { opacity:1; transform:translateY(-6px) scale(1); }
+    100% { opacity:0; transform:translateY(-16px) scale(0.96); }
+  }
 
   /* Паверапы: столбик почти-квадратных плашек в левом нижнем углу. Рамка, фон и радиус — те же,
      что у #pauseBtn и .stats-box, чтобы индикатор читался как часть интерфейса игры.
@@ -154,12 +231,30 @@
   }
   .buff img { position:absolute; left:0; right:0; top:9px; margin:0 auto; width:52px; height:52px; object-fit:contain; display:block; }
   /* последние секунды баффа */
-  .buff.low img, .buff.low .buff-bar { animation:buffBlink .6s ease-in-out infinite; }
+  .buff.low img, .buff.low .buff-bar { animation:buffBlink .75s ease-in-out infinite; }
+  /* Счётчик зарядов щита (×2 на 4-м уровне). Пустой — скрыт: при одном заряде число не пишется. */
+  .buff-n { position:absolute; top:4px; right:6px; font-size:13px; font-weight:900; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.9); }
+  .buff-n:empty { display:none; }
   @keyframes buffPop { 0%{transform:scale(0.4); opacity:0;} 65%{transform:scale(1.14); opacity:1;} 100%{transform:scale(1); opacity:1;} }
-  @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  @keyframes buffBlink { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
+  /* Вечный бафф питомца: без полосы времени, иконка по центру, фиолетовая рамка — цвет бонусов
+     питомца (#comboBonus/#meterBonus). Рамка мягко «дышит» через opacity псевдоэлемента — это
+     композитинг, перерисовки в кадре нет. */
+  .buff.pet { height:72px; border-color:rgba(199,125,255,0.55); }
+  .buff.pet::before { display:none; }
+  .buff.pet img { top:0; bottom:0; margin:auto; width:54px; height:54px; }
+  .buff.pet::after {
+    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    box-shadow:inset 0 0 0 2px rgba(199,125,255,0.8), inset 0 0 14px rgba(199,125,255,0.45);
+    animation:petGlow 2.4s ease-in-out infinite;
+  }
+  @keyframes petGlow { 0%,100%{opacity:0.35;} 50%{opacity:1;} }
 
-  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
-    box-shadow:inset 0 0 140px 40px rgba(220,30,30,0.85); }
+  /* Красная виньетка удара. Radial-gradient вместо inset box-shadow с blur 140px:
+     картинка та же, но градиент — обычная заливка слоя, а не отдельный проход размытия.
+     will-change готовит слой заранее, чтобы первый удар не стоил растеризации в кадре. */
+  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0; will-change:opacity;
+    background:radial-gradient(ellipse 72% 62% at 50% 50%, rgba(220,30,30,0) 0%, rgba(220,30,30,0) 52%, rgba(220,30,30,0.5) 78%, rgba(220,30,30,0.88) 100%); }
   #flash.on { animation:flashAnim .5s ease-out; }
   @keyframes flashAnim { 0%{opacity:1;} 100%{opacity:0;} }
 
@@ -172,15 +267,129 @@
   #yell.on { animation:yellAnim 1.4s ease-out; }
   @keyframes yellAnim { 0%{opacity:0; transform:translateX(-50%) scale(.5);} 12%{opacity:1; transform:translateX(-50%) scale(1.15);} 22%{transform:translateX(-50%) scale(1);} 80%{opacity:1;} 100%{opacity:0;} }
 
-  .over-title { font-size:clamp(28px,7.5vw,46px); font-weight:900; color:#ff5252; text-transform:uppercase;
+  /* ===== Экран смерти (source/overscreen.js) ===== */
+  .over-title { font-size:clamp(28px,7.5vw,46px); font-weight:900; color:#ff5252; text-transform:uppercase; line-height:1.05;
     text-shadow:0 3px 0 #4d0000, 0 8px 18px rgba(0,0,0,0.7); }
-  .new-record { background:#ffd94a; color:#5a3d00; font-weight:900; padding:4px 14px; border-radius:10px;
-    font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:pulseNR 1s infinite alternate; }
+  .new-record { align-self:center; background:#ffd94a; color:#5a3d00; font-weight:900; padding:4px 14px; border-radius:10px;
+    font-size:14px; text-transform:uppercase; letter-spacing:1px; animation:popNR .45s cubic-bezier(.2,1.6,.4,1) both, pulseNR 1s .45s infinite alternate; }
+  @keyframes popNR { from{transform:scale(0); opacity:0;} to{transform:scale(1); opacity:1;} }
   @keyframes pulseNR { from{transform:scale(1);} to{transform:scale(1.07);} }
 
-  #reviveBtn { display:flex; align-items:center; justify-content:center; gap:6px; font-size:clamp(14px,3.6vw,18px); white-space:nowrap; }
+  /* Этап 1 — окно воскрешения. Кольцо отсчёта — SVG-окружность, которую «съедает»
+     stroke-dashoffset (длина окружности r=44 — 276.46). Анимация чисто CSS; длительность
+     ставит overscreen.js из REVIVE_TIME, JS раз в секунду меняет только цифру. */
+  .revive-box {
+    display:flex; flex-direction:column; align-items:center; gap:12px; width:min(300px, 84vw);
+    padding:18px 18px 20px; background:var(--panel-bg); border:1px solid rgba(255,255,255,0.16);
+    border-radius:22px; box-shadow:0 8px 20px rgba(0,0,0,0.45);
+  }
+  .revive-box.on { animation:rvIn .32s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes rvIn { from{transform:scale(.7); opacity:0;} to{transform:scale(1); opacity:1;} }
+  .revive-box .over-title { font-size:clamp(26px,6.5vw,38px); }
+  .rv-timer { position:relative; width:clamp(86px,22vmin,112px); height:clamp(86px,22vmin,112px); }
+  .rv-timer svg { display:block; width:100%; height:100%; transform:rotate(-90deg); }
+  .rv-track { fill:rgba(0,0,0,0.35); stroke:rgba(255,255,255,0.12); stroke-width:8; }
+  .rv-ring { fill:none; stroke:#ffd94a; stroke-width:8; stroke-linecap:round; stroke-dasharray:276.46; stroke-dashoffset:0; transition:stroke .3s ease; }
+  .revive-box.on .rv-ring { animation:rvDrain 5s linear both; }
+  @keyframes rvDrain { to { stroke-dashoffset:276.46; } }
+  #reviveCount { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:clamp(36px,10vmin,50px); font-weight:900; color:#fff; font-variant-numeric:tabular-nums;
+    text-shadow:0 3px 10px rgba(0,0,0,0.5); transition:color .3s ease; }
+  #reviveCount.on { animation:rvTick .4s ease-out; }
+  @keyframes rvTick { from{transform:scale(1.45); opacity:.35;} to{transform:scale(1); opacity:1;} }
+  .revive-box.urgent .rv-ring { stroke:#ff5252; }
+  .revive-box.urgent #reviveCount { color:#ff6b6b; }
+  #reviveBtn { align-self:stretch; display:flex; align-items:center; justify-content:center; gap:6px; font-size:clamp(14px,3.6vw,18px); white-space:nowrap; }
   #reviveBtn img { height:1em; }
-  #reviveBtn.locked { opacity:.55; }
+  /* Не хватает пузыриков — кнопка серая (нажатие даёт звук отказа, отсчёт идёт дальше). */
+  #reviveBtn.locked { background:linear-gradient(180deg,#a3aba8,#737c79); color:#2e3432; box-shadow:0 5px 0 #4d5452, 0 10px 20px rgba(0,0,0,0.45); }
+  #reviveBtn.locked:active { box-shadow:0 1px 0 #4d5452, 0 4px 10px rgba(0,0,0,0.45); }
+
+  /* Этап 2 — итоги забега. Слева окно с живыми 3D-моделями: это «дырка» в панели, сквозь
+     которую виден холст (overscreen.js дорисовывает туда студию тем же WebGL-контекстом).
+     Дырка сделана тенью: у панели своего фона нет, её заливку рисует огромная тень окна студии
+     (обрезается скруглением панели через overflow:hidden), а затемнение вокруг панели — её
+     собственная внешняя тень. Поэтому окно студии НЕ должно быть позиционированным и не должно
+     анимироваться: иначе его тень легла бы поверх правой колонки, а прямоугольник для WebGL
+     перестал бы совпадать с окном. Панель появляется только прозрачностью, без масштаба. */
+  #overStats { background:transparent; padding:clamp(8px,2.2vmin,18px); }
+  .os-panel {
+    position:relative; width:min(1040px,100%); height:min(700px,100%);
+    display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); grid-template-rows:minmax(0,1fr) auto; gap:14px;
+    padding:16px; border-radius:22px; overflow:hidden; text-align:left;
+    border:1px solid rgba(255,255,255,0.16);
+    box-shadow:0 0 0 200vmax var(--panel-scrim);
+    animation:osIn .25s linear both;
+  }
+  @keyframes osIn { from{opacity:0;} to{opacity:1;} }
+  .os-stage { min-height:0; border-radius:16px;
+    box-shadow:0 0 0 200vmax var(--panel-bg), inset 0 0 0 1px rgba(255,255,255,0.14), inset 0 -44px 40px -34px rgba(0,0,0,0.4); }
+  /* Правая колонка не скроллится целиком: заголовок, цифры и рекорд всегда на месте,
+     прокручивается только список заданий (#overQuests забирает остаток высоты). */
+  .os-info { min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:10px; }
+  .os-info > * { flex:none; }
+  .os-head { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:6px 12px; }
+  .os-info .over-title { text-align:center; font-size:clamp(24px,5.4vmin,40px); animation:osDrop .4s cubic-bezier(.2,1.4,.4,1) .08s both; }
+  @keyframes osDrop { from{transform:translateY(-14px) scale(1.2); opacity:0;} to{transform:none; opacity:1;} }
+  @keyframes osUp { from{transform:translateY(10px); opacity:0;} to{transform:none; opacity:1;} }
+  .os-main, .os-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .os-main { animation:osUp .35s ease-out .15s both; }
+  .os-row { animation:osUp .35s ease-out .3s both; }
+  .os-big { display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 8px 9px; }
+  .os-big .v { display:flex; align-items:center; gap:6px; font-size:clamp(26px,5.4vmin,40px); font-weight:900; color:#ffd94a;
+    font-variant-numeric:tabular-nums; line-height:1.1; }
+  .os-big .v img { height:0.9em; }
+  .os-big .l, .os-small .l { font-size:11px; color:#b8ccbe; text-transform:uppercase; letter-spacing:1px; }
+  .os-small { display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px 12px;
+    background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:14px; transition:border-color .3s ease, background .3s ease; }
+  .os-small .v { display:flex; align-items:center; gap:5px; font-size:clamp(16px,3.6vmin,20px); font-weight:900; color:#fff; font-variant-numeric:tabular-nums; }
+  .os-small .v small { font-size:.7em; font-weight:700; color:#b8ccbe; }
+  .os-small .v img { height:1.05em; }
+  .os-small.rec { border-color:rgba(255,217,74,0.6); background:rgba(255,217,74,0.12); }
+  .os-small.rec .v { color:#ffd94a; }
+  #overGain { font-style:normal; font-size:.72em; color:#8ce39a; opacity:0; }
+  #overGain.on { animation:osGain .45s cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes osGain { from{transform:translateY(6px) scale(.6); opacity:0;} to{transform:none; opacity:1;} }
+  .os-qhead { margin-top:2px; font-size:12px; font-weight:900; color:#fff; text-transform:uppercase; letter-spacing:1px; animation:osUp .35s ease-out .45s both; }
+  #overQuests { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:0 2px 4px; }
+  .os-q { padding:8px 10px; animation:osUp .35s ease-out both; }   /* задержку ставит overscreen.js */
+  .os-q .q-icon { width:34px; height:34px; }
+  /* Полоса едет сдвигом (transform), а не шириной: без пересчёта раскладки и без сплющенного
+     скругления. Переход включается классом .run в момент старта; длительность ставит overscreen.js (QUEST_DUR). */
+  .os-q .q-bar i { width:100%; transform:translateX(-100%); }
+  .os-q .q-bar i.run { transition:transform .9s cubic-bezier(.33,1,.68,1), background .3s ease; }
+  .os-q .q-prog { font-variant-numeric:tabular-nums; }
+  .os-q .q-check .ic { animation:popNR .4s cubic-bezier(.2,1.6,.4,1) both; }
+  .os-q .q-reward { min-width:60px; transition:border-color .3s ease, background .3s ease; }
+  .os-q .q-reward.got { border-color:rgba(126,224,129,0.5); background:rgba(47,174,78,0.2); animation:popNR .4s cubic-bezier(.2,1.6,.4,1) both; }
+  .os-btns { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:12px; animation:osUp .35s ease-out .2s both; }
+  .os-btns .btn { padding:13px 10px; font-size:clamp(15px,3.8vw,20px); white-space:nowrap; }
+  /* Узкий портретный экран: модели сверху, итоги под ними, кнопки внизу. */
+  @media (orientation:portrait) and (max-width:620px) {
+    .os-panel { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(150px,32%) minmax(0,1fr) auto; height:100%; padding:12px; gap:10px; }
+    .os-info { gap:8px; }
+  }
+  /* Низкий горизонтальный экран (телефон боком): итогам нужна вся высота, поэтому кнопки
+     переезжают под окно с моделями, а плитки и карточки становятся компактнее.
+     Порядок элементов в DOM не меняется — окно студии по-прежнему рисуется первым. */
+  @media (orientation:landscape) and (max-height:540px) {
+    .os-panel { height:100%; padding:10px; gap:10px; grid-template-columns:minmax(0,4fr) minmax(0,7fr); }
+    .os-stage { grid-column:1; grid-row:1; }
+    .os-info { grid-column:2; grid-row:1 / 3; gap:7px; }
+    .os-btns { grid-column:1; grid-row:2; gap:8px; }
+    .os-btns .btn { padding:10px 6px; font-size:clamp(13px,3.4vmin,16px); border-radius:13px; }
+    .os-info .over-title { font-size:clamp(20px,6vmin,30px); }
+    .new-record { font-size:12px; padding:3px 10px; }
+    .os-big { padding:6px 8px 5px; }
+    .os-big .v { font-size:clamp(20px,6.4vmin,30px); }
+    .os-big .l, .os-small .l { font-size:10px; }
+    .os-small { padding:5px 10px; }
+    .os-small .v { font-size:clamp(14px,4.2vmin,18px); }
+    .os-q { padding:6px 9px; gap:9px; }
+    .os-q .q-icon { width:30px; height:30px; }
+    .os-q .q-row { margin-top:4px; }
+    .os-q .q-reward { min-width:54px; padding:4px 6px; }
+  }
 
   /* ===== Валюта и магазин ===== */
   .cur-badge {
@@ -191,7 +400,7 @@
   }
   .cur-badge img { height:1.5em; }
   .menu-cur { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left)); }
-  /* Плюсик у бейджа чекушек — вход в окно «реклама за валюту» (source/adreward.js).
+  /* Плюсик у бейджа пузыриков — вход в окно «реклама за валюту» (source/adreward.js).
      Живёт внутри бейджа, поэтому показывается/прячется вместе с меню. */
   .cur-add {
     appearance:none; cursor:pointer; font-family:inherit; line-height:1;
@@ -223,7 +432,11 @@
   #menu .cur-badge img { height:1.3em; }
 
   #menu .stats-box { width:min(300px, 82vw); box-sizing:border-box; justify-content:space-between; }
-  #menu .menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; width:min(300px, 82vw); margin-top:4px; }
+  /* --menu-btn-h: общая высота кнопок меню. Значение = прежняя высота «Играть»
+     (2*16px паддинга + ~1.2 строки шрифта clamp(18px,4.5vw,24px)), развёрнутая
+     в одну формулу, чтобы обе кнопки росли по ширине экрана синхронно. */
+  #menu .menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; width:min(300px, 82vw); margin-top:4px;
+    --menu-btn-h:clamp(54px, calc(32px + 5.4vw), 61px); }
 
   .menu-btn {
     appearance:none; border:none; cursor:pointer; font-family:inherit;
@@ -233,27 +446,31 @@
   }
   .menu-btn:active { transform:translateY(3px); }
   .menu-btn-icon { font-size:1.1em; line-height:1; }
+  /* Иконка-глиф внутри текстовой кнопки меню. Общий .ic задаёт 50% от размера
+     кнопки — это про квадратные .menu-btn--tool, здесь нужен размер по тексту. */
+  .menu-btn .menu-btn-ic { width:1.3em; height:1.3em; flex:0 0 auto; }
 
   .menu-btn--play {
     font-weight:800; color:#3a2a00;
     background:linear-gradient(180deg,#ffe066,#ffb400);
-    padding:16px 28px; font-size:clamp(18px,4.5vw,24px);
+    min-height:var(--menu-btn-h); padding:0 28px; font-size:clamp(18px,4.5vw,24px);
     box-shadow:0 5px 0 #b57e00, 0 10px 20px rgba(0,0,0,0.45);
   }
   .menu-btn--play:active { box-shadow:0 1px 0 #b57e00, 0 4px 10px rgba(0,0,0,0.45); }
 
-  .menu-btn-row { display:flex; gap:10px; }
+  /* Вторичная кнопка меню («Магазин»). Ширину задаёт колонка .menu-actions
+     (align-items:stretch), поэтому своей flex-базы не нужно. */
   .menu-btn--secondary {
-    flex:1 1 0; min-width:0; font-weight:700; color:#fff;
+    min-width:0; font-weight:700; color:#fff;
     background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.22);
-    padding:12px 10px; font-size:clamp(13px,3.2vw,16px); gap:7px;
+    min-height:var(--menu-btn-h); padding:0 16px; font-size:clamp(14px,3.6vw,18px); gap:8px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     box-shadow:0 4px 0 rgba(0,0,0,0.35), 0 8px 16px rgba(0,0,0,0.35);
   }
   .menu-btn--secondary:active { box-shadow:0 1px 0 rgba(0,0,0,0.35); }
 
   #shop { justify-content:flex-end; gap:0; padding:0;
-    background:transparent; -webkit-backdrop-filter:none; backdrop-filter:none; pointer-events:none; }
+    background:transparent; pointer-events:none; }
   #shop > * { pointer-events:auto; }
   #shopTop { position:absolute; top:calc(12px + env(safe-area-inset-top)); left:calc(12px + env(safe-area-inset-left));
     right:calc(12px + env(safe-area-inset-right)); display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -289,10 +506,12 @@
     box-shadow:0 8px 20px rgba(0,0,0,0.45);
   }
   #skinName { font-size:clamp(20px,5.5vw,27px); font-weight:900; color:#fff; letter-spacing:.5px; }
-  #skinDesc { font-size:clamp(12px,3.2vw,14px); color:#b8ccbe; line-height:1.35; }
+  #skinDesc { font-size:clamp(12px,3.2vw,14px); color:#b8ccbe; line-height:1.35; white-space:pre-line; }
   #skinPrice { display:flex; align-items:center; gap:6px; font-size:clamp(16px,4.2vw,20px); font-weight:900;
     padding:4px 14px; border-radius:10px; }
   #skinPrice img { height:1.3em; }
+  /* Старая цена, если ролики за вещь уже снизили её (source/shop.js:renderPriceRow) */
+  #skinPrice s { opacity:.55; font-size:.78em; text-decoration-thickness:2px; }
   #skinPrice[data-state="free"] { color:#8ce39a; background:rgba(47,174,78,0.18); font-size:clamp(13px,3.4vw,15px); }
   #skinPrice[data-state="price"] { color:#ffd94a; background:rgba(255,217,74,0.12); }
   #skinPrice[data-state="locked"] { color:#ff8a8a; background:rgba(255,82,82,0.14); }
@@ -348,7 +567,7 @@
   /* ===== Панель инструментов меню (настройки / задания / мини-игра) =====
      Вертикальная колонка в правом верхнем углу. Живёт внутри #menu, поэтому
      показывается/прячется вместе с меню — отдельной логики видимости не нужно.
-     Кнопки намеренно переиспользуют классы «Магазина»/«Питомцев»
+     Кнопки намеренно переиспользуют класс кнопки «Магазин»
      (.menu-btn.menu-btn--secondary) — модификатор ниже задаёт только квадратную
      форму, а цвет/тени/нажатие берутся из общего стиля меню. */
   #menuTools {
@@ -356,7 +575,7 @@
     display:flex; flex-direction:column; gap:10px;
   }
   .menu-btn--tool {
-    flex:0 0 auto; padding:0;
+    flex:0 0 auto; padding:0; min-height:auto;
     width:clamp(44px,12vw,52px); height:clamp(44px,12vw,52px);
   }
   /* Иконки — одноцветные линейные SVG из спрайта (#ic-*), цвет наследуется
@@ -459,6 +678,13 @@
   .vol-slider::-moz-range-progress { height:8px; border-radius:6px; background:#ffd94a; }
   .vol-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 0 rgba(0,0,0,0.4); }
 
+  /* Уровень графики: та же плитка в два ряда, что и громкость, а переключатель — копия вкладок
+     магазина (#shopTabs / .tab-btn), только растянутый на всю ширину плитки. */
+  .set-row.gfx-row { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 12px; }
+  .gfx-seg { display:flex; gap:4px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.16); border-radius:14px; padding:4px; }
+  .gfx-seg .tab-btn { flex:1 1 0; min-width:0; padding:8px 4px; }
+  .gfx-note { font-size:clamp(11px,3vw,13px); color:#b8ccbe; line-height:1.35; }
+
   /* ===== Задания ===== */
   /* min-height:0 обязателен: без него flex-элемент не даёт себя сжать и список не скроллится,
      а вылезает за пределы панели на маленьких экранах. */
@@ -493,6 +719,51 @@
   .q-reward .v { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; }
   .q-reward .v img { height:1.15em; }
 
+  /* ===== Прокачка паверапов (кнопка ⚡, source/powerups.js) =====
+     Карточка — тот же грид, что у quest-card (иконка/тело/кнопка), но акцентный цвет свой
+     у каждого баффа (--c из реестра TYPES, та же переменная, что красит полосу в HUD). */
+  #powerupsModal .modal-head { justify-content:space-between; flex-wrap:wrap; row-gap:6px; }
+  .pu-cur { padding:5px 11px; font-size:clamp(14px,3.8vw,17px); gap:6px; }
+  #powerupsList { display:flex; flex-direction:column; gap:10px; overflow-y:auto; min-height:0; padding:2px 2px 5px; }
+  .pu-card {
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; text-align:left;
+    padding:10px 11px; border-color:rgba(255,255,255,0.16);
+    animation:puIn .32s cubic-bezier(.22,.9,.32,1.25) both; animation-delay:calc(var(--i) * 70ms);
+  }
+  .pu-card.on { animation:puLevelUp .38s ease; }
+  @keyframes puIn { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:none; } }
+  @keyframes puLevelUp { 0%,100% { transform:scale(1); } 45% { transform:scale(1.035); } }
+  .pu-icon {
+    width:44px; height:44px; border-radius:13px; flex:none; color:var(--c);
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+    box-shadow:0 0 9px var(--c);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pu-icon img { width:27px; height:27px; object-fit:contain; }
+  .pu-main { min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .pu-row1 { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .pu-name { font-size:clamp(13px,3.4vw,15px); font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:.3px; }
+  .pu-time { font-size:clamp(12px,3.2vw,14px); font-weight:900; color:var(--c); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .pu-row2 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .pu-dots { display:flex; gap:5px; }
+  .pu-dots i { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.12); transition:background-color .18s ease, box-shadow .18s ease; }
+  .pu-dots i.on { background:var(--c); box-shadow:0 0 5px var(--c); border-color:transparent; }
+  .pu-lvl { font-size:11px; font-weight:800; color:#b8ccbe; white-space:nowrap; }
+  .pu-upg {
+    appearance:none; border:none; cursor:pointer; font-family:inherit; flex:none;
+    display:flex; flex-direction:column; align-items:center; gap:2px; min-width:78px;
+    border-radius:12px; padding:8px 12px; font-weight:900; text-transform:uppercase; letter-spacing:.3px;
+    font-size:clamp(11px,2.9vw,13px); color:#06340f; transition:transform .06s ease, box-shadow .06s ease;
+    background:linear-gradient(180deg,#7ee081,#2fae4e); box-shadow:0 4px 0 #1d7a36;
+  }
+  .pu-upg:active { transform:translateY(3px); box-shadow:0 1px 0 #1d7a36; }
+  .pu-upg[data-state="locked"] { background:linear-gradient(180deg,#9aa2ab,#6f7780); box-shadow:0 4px 0 #4c535a; color:#fff; opacity:.8; }
+  .pu-upg[data-state="locked"]:active { box-shadow:0 1px 0 #4c535a; }
+  .pu-upg[data-state="max"] { background:rgba(255,255,255,0.08); box-shadow:none; color:#8ce39a; border:1px solid rgba(126,224,129,0.4); cursor:default; padding:12px; pointer-events:none; }
+  .pu-upg.on { animation:rltShake .4s ease; }
+  .pu-upg-cost { display:flex; align-items:center; gap:3px; font-size:12px; }
+  .pu-upg-cost img { height:1.1em; }
+
   /* ===== Баннер секретного скина (награда за ВСЕ задания) =====
      Та же плитка, что у карточек заданий, но с жёлтой рамкой: это приз, а не задание.
      Силуэт справа — обычная картинка (data URL), её один раз «фотографирует»
@@ -515,6 +786,37 @@
   /* ===== Уведомление о выполненном задании =====
      Контейнер — колонка: несколько уведомлений подряд выстраиваются друг под другом,
      а не накладываются. pointer-events:none, чтобы не перехватывать свайпы управления. */
+  /* ===== Таблица лидеров ===== */
+  /* min-height:0 — как у #questsList: без него список не скроллится, а распирает панель. */
+  #lbList { display:flex; flex-direction:column; gap:8px; overflow-y:auto; min-height:0; padding:2px 2px 5px; }
+  .lb-row { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:10px; padding:8px 11px; }
+  /* Своя строка — жёлтая, как акцент всего интерфейса: игрок находит себя без чтения имён. */
+  .lb-row[data-me="1"] { background:rgba(255,217,74,0.16); border-color:rgba(255,217,74,0.45); }
+  .lb-rank {
+    min-width:30px; height:30px; padding:0 5px; border-radius:10px; flex:none;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:900; color:#b8ccbe;
+  }
+  /* Призовая тройка — золото / серебро / бронза, остальные ранги нейтральные. */
+  .lb-row[data-rank="1"] .lb-rank { color:#ffd94a; border-color:rgba(255,217,74,0.5); }
+  .lb-row[data-rank="2"] .lb-rank { color:#dfe7ee; border-color:rgba(223,231,238,0.45); }
+  .lb-row[data-rank="3"] .lb-rank { color:#e0a26a; border-color:rgba(224,162,106,0.45); }
+  .lb-ava {
+    width:30px; height:30px; border-radius:50%; flex:none; overflow:hidden;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15);
+  }
+  .lb-ava img { width:100%; height:100%; object-fit:cover; display:block; }
+  /* min-width:0 обязателен: без него длинный ник распирает грид и счёт уезжает из строки. */
+  .lb-name { min-width:0; font-size:clamp(12px,3.2vw,14px); font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .lb-score { flex:none; display:flex; align-items:baseline; gap:3px; font-weight:900; color:#ffd94a; font-size:clamp(13px,3.4vw,15px); }
+  .lb-score small { font-size:10px; font-weight:800; color:#b8ccbe; }
+  /* Разрыв рангов между топом и соседями игрока. */
+  .lb-gap { text-align:center; color:#7f9488; letter-spacing:3px; font-weight:900; line-height:0.8; }
+  .lb-you { text-align:center; font-size:clamp(12px,3.2vw,14px); font-weight:800; color:#ffd94a; }
+  .lb-msg { text-align:center; font-size:clamp(13px,3.4vw,15px); color:#b8ccbe; line-height:1.4; padding:12px 4px; }
+  #lbLoginBtn { align-self:center; }
+
   #questToasts {
     position:fixed; top:calc(10px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
     z-index:30; pointer-events:none; width:min(360px, calc(100% - 24px));
@@ -542,7 +844,7 @@
   .qt-reward { display:flex; align-items:center; gap:4px; font-size:15px; font-weight:900; color:#ffd94a; white-space:nowrap; }
   .qt-reward img { height:1.1em; }
 
-  /* ===== Рулетка чекушек (мини-игра, кнопка 💵 в меню) =====
+  /* ===== Рулетка пузыриков (мини-игра, кнопка 💵 в меню) =====
      Окно шире обычной .menu-modal: три колонки (ставка/шанс — колесо — награда) в ряд на
      широком экране, стопкой на узком. Сама панель — тот же .box, что у остальных модалок
      меню, чтобы не заводить отдельную оболочку. */
@@ -665,6 +967,27 @@
   @keyframes rltWinPop { 0%{transform:scale(.5);} 60%{transform:scale(1.18);} 100%{transform:scale(1);} }
   .rlt-result-text.on { animation:rltShake .4s ease; }
   @keyframes rltShake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+
+  /* ===== Телефон: то же окно, но ниже по высоте =====
+     Зеркало десктопного @media (min-width:680px) — ПК эти правила не видит вообще.
+     На узком экране окно складывается в столбик, и суммарная высота переставала влезать
+     в .box (max-height:calc(100% - 20px)), из-за чего низ окна награды обрезался.
+     Лечим не скроллом, а высотой самих панелей: главный выигрыш — столбик кнопок
+     ALL/▲/▼ (80px) превращается в строку (30px). Остальное — только урезанные отступы,
+     визуально блоки те же. */
+  @media (max-width:679.98px) {
+    .rlt-body { gap:10px; }
+    .rlt-col { gap:8px; }
+    .rlt-panel { padding:8px 12px 10px; gap:6px; }
+    /* Ставка в одну строку: иконка + число + ряд кнопок справа. Кнопки стали выше (30px
+       вместо 24px) — в строке место есть, а по пальцу попасть проще. */
+    .rlt-bet img { height:2em; }
+    .rlt-bet-steps { flex-direction:row; gap:5px; }
+    .rlt-bet-steps button { width:34px; height:30px; }
+    .rlt-bet-steps button.rlt-allin { width:44px; }
+    .rlt-chance-presets button { padding:6px 4px; }
+    .rlt-result { padding:14px 12px; gap:6px; }
+  }
 </style>
 </head>
 <body>
@@ -686,6 +1009,21 @@
     <rect x="2.6" y="5.8" width="18.8" height="12.4" rx="2.2"/>
     <circle cx="12" cy="12" r="2.6"/>
     <path d="M6.2 12h.02M17.8 12h.02"/>
+  </symbol>
+  <!-- Пакет с покупками: корпус с загнутым верхом + дуга-ручка. Только обводка,
+       как у остальных иконок, поэтому цвет берётся из currentColor кнопки. -->
+  <symbol id="ic-bag" viewBox="0 0 24 24">
+    <path d="M7.6 3.2h8.8l2.8 3.8v12.2a1.8 1.8 0 0 1-1.8 1.8H6.6a1.8 1.8 0 0 1-1.8-1.8V7z"/>
+    <path d="M4.8 7h14.4"/>
+    <path d="M15.3 10.4a3.3 3.3 0 0 1-6.6 0"/>
+  </symbol>
+  <!-- Кубок: чаша с боковыми ручками, ножка и подставка. Только обводка, как у остальных. -->
+  <symbol id="ic-cup" viewBox="0 0 24 24">
+    <path d="M7.3 3.2h9.4v5.2a4.7 4.7 0 0 1-9.4 0z"/>
+    <path d="M7.3 4.7H4.6v1.6a3.3 3.3 0 0 0 3.3 3.3"/>
+    <path d="M16.7 4.7h2.7v1.6a3.3 3.3 0 0 1-3.3 3.3"/>
+    <path d="M12 13.1v3.5"/>
+    <path d="M8.5 20.8h7l-.9-4.2H9.4z"/>
   </symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5.2 12.6l4.6 4.6L18.8 7.2"/></symbol>
   <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></symbol>
@@ -709,116 +1047,149 @@
     <circle cx="7.4" cy="9.6" r="1.9"/><circle cx="12" cy="7.5" r="2"/><circle cx="16.6" cy="9.6" r="1.9"/>
     <path d="M12 12.3c2.7 0 4.8 2 4.8 4.2 0 1.7-1.3 2.9-3 2.9-.8 0-1.3-.4-1.8-.4s-1 .4-1.8.4c-1.7 0-3-1.2-3-2.9 0-2.2 2.1-4.2 4.8-4.2z"/>
   </symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24">
+    <path d="M13.2 2 5.8 13.1h4.6L9.9 22l7.6-11.4h-4.9z"/>
+  </symbol>
 </defs></svg>
 
 <div id="game"></div>
 
 <!-- HUD -->
 <div id="hud" class="overlay hidden">
-  <button id="pauseBtn" aria-label="Пауза"><span></span><span></span></button>
+  <div id="hudFade"></div>
+  <button id="pauseBtn" data-i18n-aria="hud.pause" aria-label="Пауза"><span></span><span></span></button>
   <div id="hudRight">
-    <div id="score">0 <small>м</small></div>
+    <div id="score">0 <small data-i18n="hud.meters">м</small></div>
     <div id="bottleCount"><span id="bottleNum">0</span><img id="bottleIcon" alt=""></div>
+    <!-- «+25» = METER_BONUS_STEP в main.js -->
+    <div id="meterBonus">+25 <small data-i18n="hud.meters">м</small></div>
   </div>
   <div id="comboText"><span></span></div>
+  <div id="comboBonus">+1</div>
   <!-- Индикаторы активных паверапов. Слоты созданы заранее (один на тип) и просто прячутся:
        powerups.js в забеге только переключает класс .on и пишет переменную --p, DOM не создаётся. -->
   <div id="buffs">
     <div class="buff" id="buff_magnet"><span class="buff-bar"></span><img alt=""></div>
     <div class="buff" id="buff_boots"><span class="buff-bar"></span><img alt=""></div>
     <div class="buff" id="buff_double"><span class="buff-bar"></span><img alt=""></div>
+    <div class="buff" id="buff_shield"><span class="buff-bar"></span><img alt=""><b class="buff-n"></b></div>
+    <!-- Вечный бафф питомца (powerups.js:setPetBuff) — последним, в самом углу. -->
+    <div class="buff pet" id="buff_pet"><img alt=""></div>
   </div>
 </div>
 <div id="flash"></div>
 <div id="yell"></div>
 
 <!-- Кнопка пропуска интро -->
-<button id="skipIntroBtn" class="btn hidden">Пропустить ⏭</button>
+<button id="skipIntroBtn" class="btn hidden" data-i18n="hud.skip">Пропустить ⏭</button>
 
 <!-- Loading -->
 <div id="loading" class="overlay">
-  <h1 class="logo">Мэл<span>Побег из школы</span></h1>
+  <h1 class="logo"><span data-i18n="logo.name">Мэл</span><span class="sub" data-i18n="logo.sub">Побег из школы</span></h1>
   <div class="spinner"></div>
-  <div class="lt" id="loadingText">Загрузка…</div>
+  <div class="lt" id="loadingText" data-i18n="loading.text">Загрузка…</div>
 </div>
 
 <!-- Menu -->
 <div id="menu" class="overlay hidden">
-  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" aria-label="Получить чекушки за рекламу"></button></div>
+  <div class="cur-badge menu-cur"><img id="menuCurIcon" alt=""><span id="menuCurrency">0</span><button id="curAddBtn" class="cur-add" data-wait="0" data-i18n-aria="menu.curAdd" aria-label="Получить пузырики за рекламу"></button></div>
   <div id="menuTools">
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
-    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="settingsBtn" data-i18n-aria="menu.settings" aria-label="Настройки"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="questsBtn" data-i18n-aria="menu.quests" aria-label="Задания"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="minigameBtn" data-i18n-aria="menu.minigame" aria-label="Мини-игра"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></button>
+    <button class="menu-btn menu-btn--secondary menu-btn--tool" id="powerupsBtn" data-i18n-aria="menu.powerups" aria-label="Паверапы"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bolt"/></svg></button>
   </div>
-  <h1 class="logo">Мэл<span>Побег из школы</span></h1>
+  <h1 class="logo"><span data-i18n="logo.name">Мэл</span><span class="sub" data-i18n="logo.sub">Побег из школы</span></h1>
   <div class="stats-box">
-    <div class="stat"><div class="v" id="menuBest">0</div><div class="l" id="menuBestLabel">Рекорд, м</div></div>
-    <div class="stat"><div class="v"><img id="menuBottleIcon" alt=""><span id="menuBottles">0</span></div><div class="l" id="menuBottlesLabel">Всего собрано</div></div>
+    <div class="stat"><div class="v" id="menuBest">0</div><div class="l" id="menuBestLabel" data-i18n="menu.best">Рекорд, м</div></div>
+    <div class="stat"><div class="v"><img id="menuBottleIcon" alt=""><span id="menuBottles">0</span></div><div class="l" id="menuBottlesLabel" data-i18n="menu.collected">Всего собрано</div></div>
   </div>
   <div class="menu-actions">
-    <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span>Играть</button>
-    <div class="menu-btn-row">
-      <button class="menu-btn menu-btn--secondary" id="shopBtn">Магазин</button>
-      <button class="menu-btn menu-btn--secondary" id="petsBtn">Питомцы</button>
-    </div>
+    <button class="menu-btn menu-btn--play" id="playBtn"><span class="menu-btn-icon">▶</span><span data-i18n="menu.play">Играть</span></button>
+    <button class="menu-btn menu-btn--secondary" id="shopBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bag"/></svg><span data-i18n="menu.shop">Магазин</span></button>
+    <button class="menu-btn menu-btn--secondary" id="leaderboardBtn"><svg class="ic menu-btn-ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-cup"/></svg><span data-i18n="menu.leaderboard">Рекорды</span></button>
   </div>
   <div class="hint-row">
-    <span><b>←</b><b>→</b> полосы</span>
-    <span><b>↑</b> прыжок</span>
-    <span><b>↓</b> подкат</span>
-    <span><b>свайпы</b> на телефоне</span>
+    <span><b>←</b><b>→</b> <span data-i18n="hint.lanes">полосы</span></span>
+    <span><b>↑</b> <span data-i18n="hint.jump">прыжок</span></span>
+    <span><b>↓</b> <span data-i18n="hint.roll">подкат</span></span>
+    <span><b data-i18n="hint.swipeKey">свайпы</b> <span data-i18n="hint.swipe">на телефоне</span></span>
   </div>
 </div>
 
 <!-- Pause -->
 <div id="pause" class="overlay hidden">
   <div class="stack-panel">
-    <h1 class="logo" style="font-size:clamp(28px,7vw,48px)">Пауза</h1>
-    <button class="btn" id="resumeBtn">▶ Продолжить</button>
-    <button class="btn ghost" id="pauseSettingsBtn">Настройки</button>
-    <button class="btn ghost" id="restartBtn">Заново</button>
-    <button class="btn ghost" id="pauseMenuBtn">В меню</button>
+    <h1 class="logo" style="font-size:clamp(28px,7vw,48px)" data-i18n="pause.title">Пауза</h1>
+    <button class="btn" id="resumeBtn" data-i18n="pause.resume">▶ Продолжить</button>
+    <button class="btn ghost" id="pauseSettingsBtn" data-i18n="pause.settings">Настройки</button>
+    <button class="btn ghost" id="restartBtn" data-i18n="pause.restart">Заново</button>
+    <button class="btn ghost" id="pauseMenuBtn" data-i18n="pause.menu">В меню</button>
   </div>
   <div class="hint-row">
-    <span><b>←</b><b>→</b> полосы</span>
-    <span><b>↑</b> прыжок</span>
-    <span><b>↓</b> подкат</span>
-    <span><b>свайпы</b> на телефоне</span>
+    <span><b>←</b><b>→</b> <span data-i18n="hint.lanes">полосы</span></span>
+    <span><b>↑</b> <span data-i18n="hint.jump">прыжок</span></span>
+    <span><b>↓</b> <span data-i18n="hint.roll">подкат</span></span>
+    <span><b data-i18n="hint.swipeKey">свайпы</b> <span data-i18n="hint.swipe">на телефоне</span></span>
   </div>
 </div>
 
-<!-- Game over -->
+<!-- Экран смерти, этап 1: воскрешение с обратным отсчётом (source/overscreen.js) -->
 <div id="over" class="overlay hidden">
-  <div class="over-title" id="overTitle">Попался!</div>
-  <div class="new-record hidden" id="newRecord">🏆 Новый рекорд!</div>
-  <div class="stack-panel">
-    <div class="stats-box">
-      <div class="stat"><div class="v" id="overScore">0</div><div class="l" id="overScoreLabel">Метров</div></div>
-      <div class="stat"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" id="overBottlesLabel">Бутылок</div></div>
+  <div class="revive-box" id="reviveBox">
+    <div class="rv-timer">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="rv-track" cx="50" cy="50" r="44"/><circle class="rv-ring" cx="50" cy="50" r="44"/></svg>
+      <span id="reviveCount">5</span>
     </div>
-    <button class="btn hidden" id="reviveBtn">Восстать за <span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
-    <button class="btn ghost" id="againBtn">▶ Ещё раз</button>
-    <button class="btn ghost" id="overMenuBtn">В меню</button>
+    <div class="over-title" data-i18n="over.title">Попался!</div>
+    <button class="btn" id="reviveBtn"><span data-i18n="over.reviveFor">Восстать за</span><span id="reviveCost">100</span><img id="reviveCostIcon" alt=""></button>
+  </div>
+</div>
+
+<!-- Экран смерти, этап 2: итоги забега. #overStage — окно, в которое WebGL дорисовывает Мэла и питомца -->
+<div id="overStats" class="overlay hidden">
+  <div class="os-panel">
+    <div class="os-stage" id="overStage"></div>
+    <div class="os-info">
+      <div class="os-head">
+        <div class="over-title" data-i18n="over.title">Попался!</div>
+        <div class="new-record hidden" id="newRecord" data-i18n="over.newRecord">🏆 Новый рекорд!</div>
+      </div>
+      <div class="os-main">
+        <div class="os-big ui-tile"><div class="v" id="overScore">0</div><div class="l" data-i18n="over.meters">Метров</div></div>
+        <div class="os-big ui-tile"><div class="v"><img id="overBottleIcon" alt=""><span id="overBottles">0</span></div><div class="l" data-i18n="over.bottles">Пузыриков</div></div>
+      </div>
+      <div class="os-row">
+        <div class="os-small" id="overBestBox"><div class="l" data-i18n="over.best">Рекорд</div><div class="v"><span id="overBest">0</span><small data-i18n="hud.meters">м</small></div></div>
+        <div class="os-small"><div class="l" data-i18n="over.balance">Всего пузыриков</div><div class="v"><img id="overBalanceIcon" alt=""><span id="overBalance">0</span><em id="overGain">+0</em></div></div>
+      </div>
+      <div class="os-qhead" id="overQuestsHead" data-i18n="quests.title">Задания</div>
+      <div id="overQuests"></div>
+    </div>
+    <div class="os-btns">
+      <button class="btn" id="againBtn" data-i18n="over.again">▶ Ещё раз</button>
+      <button class="btn ghost" id="overMenuBtn" data-i18n="over.menu">В меню</button>
+    </div>
   </div>
 </div>
 
 <!-- Shop -->
 <div id="shop" class="overlay hidden">
   <div id="shopTop">
-    <button class="btn ghost small" id="shopBackBtn">← Назад</button>
+    <button class="btn ghost small" id="shopBackBtn" data-i18n="shop.back">← Назад</button>
     <div class="cur-badge"><img id="shopCurIcon" alt=""><span id="shopCurrency">0</span></div>
   </div>
   <div id="shopTabs">
-    <button class="tab-btn" id="shopTabSkins" data-active="1">Скины</button>
-    <button class="tab-btn" id="shopTabPets">Питомцы</button>
+    <button class="tab-btn" id="shopTabSkins" data-active="1" data-i18n="shop.tabSkins">Скины</button>
+    <button class="tab-btn" id="shopTabPets" data-i18n="shop.tabPets">Питомцы</button>
   </div>
-  <button class="arrow-btn" id="skinPrevBtn" aria-label="Предыдущий вариант">❮</button>
-  <button class="arrow-btn" id="skinNextBtn" aria-label="Следующий вариант">❯</button>
+  <button class="arrow-btn" id="skinPrevBtn" data-i18n-aria="shop.prev" aria-label="Предыдущий вариант">❮</button>
+  <button class="arrow-btn" id="skinNextBtn" data-i18n-aria="shop.next" aria-label="Следующий вариант">❯</button>
   <div id="skinCard">
     <div id="skinName">—</div>
     <div id="skinDesc"></div>
     <div id="skinPrice" data-state="free"></div>
-    <button id="skinAction" data-state="buy">Купить</button>
+    <button id="skinAction" data-state="buy" data-i18n="shop.buy">Купить</button>
     <!-- Альтернативная покупка за просмотр роликов. Текст, число роликов и показ/скрытие — source/shop.js -->
     <button id="skinAdBtn" class="hidden" data-busy="0"></button>
     <div id="skinDots"></div>
@@ -828,11 +1199,11 @@
 <!-- Модалка магазина -->
 <div id="shopModal" class="hidden" data-kind="ok">
   <div class="box">
-    <button id="shopModalClose" aria-label="Закрыть">✕</button>
+    <button id="shopModalClose" data-i18n-aria="modal.close" aria-label="Закрыть">✕</button>
     <img id="shopModalIcon" alt="">
     <div id="shopModalTitle"></div>
     <div id="shopModalText"></div>
-    <button class="btn small" id="shopModalBtn">Ок</button>
+    <button class="btn small" id="shopModalBtn" data-i18n="modal.ok">Ок</button>
   </div>
 </div>
 
@@ -841,16 +1212,27 @@
      save.musicVol/save.soundVol (проценты), состояние UI проставляет syncAudioUI() в utils.js. -->
 <div id="settingsModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="settingsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t">Настройки</span></div></div>
+    <button class="modal-close" id="settingsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gear"/></svg></span><span class="t" data-i18n="settings.title">Настройки</span></div></div>
     <div id="settingsList">
       <div class="set-row ui-tile vol-row">
-        <div class="vol-head"><span class="n">Музыка</span><span class="vol-val">100%</span></div>
-        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость музыки"></div>
+        <div class="vol-head"><span class="n" data-i18n="settings.music">Музыка</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">♪</span><input class="vol-slider" id="musicVol" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="settings.musicAria" aria-label="Громкость музыки"></div>
       </div>
       <div class="set-row ui-tile vol-row">
-        <div class="vol-head"><span class="n">Звуки</span><span class="vol-val">100%</span></div>
-        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" aria-label="Громкость звуков"></div>
+        <div class="vol-head"><span class="n" data-i18n="settings.sound">Звуки</span><span class="vol-val">100%</span></div>
+        <div class="vol-ctl"><span class="vol-ico" aria-hidden="true">🔊</span><input class="vol-slider" id="soundVol" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="settings.soundAria" aria-label="Громкость звуков"></div>
+      </div>
+      <!-- Уровень графики (source/quality.js). Активную кнопку (data-active) и подсказку
+           про перезапуск проставляет syncGfxUI в main.js. -->
+      <div class="set-row ui-tile gfx-row">
+        <span class="n" data-i18n="settings.graphics">Графика</span>
+        <div class="gfx-seg" id="gfxSeg">
+          <button class="tab-btn" data-q="low" data-i18n="settings.gfxLow">Низкая</button>
+          <button class="tab-btn" data-q="medium" data-i18n="settings.gfxMedium">Средняя</button>
+          <button class="tab-btn" data-q="high" data-i18n="settings.gfxHigh">Высокая</button>
+        </div>
+        <span class="gfx-note hidden" id="gfxNote" data-i18n="settings.gfxRestart">Часть настроек применится после перезапуска игры</span>
       </div>
     </div>
   </div>
@@ -859,13 +1241,13 @@
 <!-- Задания (кнопка 📋). Карточки строит source/quests.js по массиву QUESTS. -->
 <div id="questsModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="questsClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></span><span class="t">Задания</span></div></div>
+    <button class="modal-close" id="questsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-quests"/></svg></span><span class="t" data-i18n="quests.title">Задания</span></div></div>
     <!-- Приз за все задания. Текст, прогресс и силуэт проставляет source/quests.js -->
     <div id="secretQuest" class="ui-tile" data-done="0">
       <div class="q-icon"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-shirt"/></svg></div>
       <div class="q-main">
-        <div class="q-name">Секретный скин</div>
+        <div class="q-name" data-i18n="quests.secretName">Секретный скин</div>
         <div class="sq-sub"></div>
         <div class="q-row"><div class="q-bar"><i></i></div><div class="q-prog"></div></div>
       </div>
@@ -875,31 +1257,44 @@
   </div>
 </div>
 
-<!-- Рулетка чекушек (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
+<!-- Таблица лидеров Яндекс Игр (кнопка «Рекорды» под «Магазином»).
+     Строки, состояния и вход в аккаунт — source/leaderboard.js. -->
+<div id="leaderboardModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="lbClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-cup"/></svg></span><span class="t" data-i18n="lb.title">Рекорды</span></div></div>
+    <div class="lb-you hidden" id="lbYou"></div>
+    <div class="lb-msg hidden" id="lbMsg"></div>
+    <button class="btn small hidden" id="lbLoginBtn" data-i18n="lb.login">Войти</button>
+    <div id="lbList" class="hidden"></div>
+  </div>
+</div>
+
+<!-- Рулетка пузыриков (мини-игра, кнопка 💵). Вся логика — source/roulette.js. -->
 <div id="rouletteModal" class="menu-modal hidden">
   <div class="box">
-    <button class="modal-close" id="rouletteClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t">Бурмалда</span></div></div>
+    <button class="modal-close" id="rouletteClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" data-i18n="roulette.title">Бурмалда</span></div></div>
     <div class="rlt-body">
       <div class="rlt-topbar">
         <div class="cur-badge"><img id="rouletteCurIcon" alt=""><span id="rouletteCurrency">0</span></div>
       </div>
       <div class="rlt-col rlt-mid">
         <div class="rlt-panel ui-tile">
-          <div class="rlt-label">Ставка</div>
+          <div class="rlt-label" data-i18n="roulette.bet">Ставка</div>
           <div class="rlt-bet">
             <img id="rouletteBetIcon" alt="">
-            <input class="rlt-bet-val" id="rouletteBetVal" type="text" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Размер ставки">
+            <input class="rlt-bet-val" id="rouletteBetVal" type="text" inputmode="numeric" pattern="[0-9]*" value="100" data-i18n-aria="roulette.betAria" aria-label="Размер ставки">
             <div class="rlt-bet-steps">
               <button class="rlt-allin" id="rouletteAllIn">ALL</button>
-              <button id="rouletteBetInc" aria-label="Увеличить ставку">▲</button>
-              <button id="rouletteBetDec" aria-label="Уменьшить ставку">▼</button>
+              <button id="rouletteBetInc" data-i18n-aria="roulette.betInc" aria-label="Увеличить ставку">▲</button>
+              <button id="rouletteBetDec" data-i18n-aria="roulette.betDec" aria-label="Уменьшить ставку">▼</button>
             </div>
           </div>
         </div>
         <div class="rlt-panel ui-tile">
-          <div class="rlt-label">Шанс выигрыша</div>
-          <input class="vol-slider rlt-slider" id="rouletteChanceSlider" type="range" min="5" max="75" step="1" value="50" aria-label="Шанс выигрыша">
+          <div class="rlt-label" data-i18n="roulette.chance">Шанс выигрыша</div>
+          <input class="vol-slider rlt-slider" id="rouletteChanceSlider" type="range" min="5" max="75" step="1" value="50" data-i18n-aria="roulette.chanceAria" aria-label="Шанс выигрыша">
           <div class="rlt-chance-presets">
             <button id="rouletteChance10" data-active="0">10%</button>
             <button id="rouletteChance30" data-active="0">30%</button>
@@ -907,7 +1302,7 @@
             <button id="rouletteChance75" data-active="0">75%</button>
           </div>
         </div>
-        <button class="btn rlt-spin" id="rouletteSpinBtn">Крутить</button>
+        <button class="btn rlt-spin" id="rouletteSpinBtn" data-i18n="roulette.spin">Крутить</button>
       </div>
       <div class="rlt-hint" id="rouletteHint" data-warn="0"></div>
       <div class="rlt-col rlt-wheelcol">
@@ -918,7 +1313,7 @@
         </div>
       </div>
       <div class="rlt-col rlt-result" id="rouletteResult" data-state="idle">
-        <div class="rlt-result-title" id="rouletteResultTitle">Возможный выигрыш</div>
+        <div class="rlt-result-title" id="rouletteResultTitle" data-i18n="roulette.potential">Возможный выигрыш</div>
         <div class="rlt-result-body" id="rouletteResultBody"><img id="rouletteResultIcon" alt=""><span id="rouletteResultAmount">190</span></div>
         <div class="rlt-result-text hidden" id="rouletteResultText"></div>
       </div>
@@ -926,25 +1321,32 @@
   </div>
 </div>
 
-<!-- Награда за просмотр рекламы (плюсик у бейджа чекушек). Тексты, состояние
+<!-- Прокачка паверапов (кнопка ⚡ #powerupsBtn). Карточки строит source/powerups.js
+     по массиву TYPES — 3 фиксированные строки, уровень и цена берутся из save.powerupLvl. -->
+<div id="powerupsModal" class="menu-modal hidden">
+  <div class="box">
+    <button class="modal-close" id="powerupsClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bolt"/></svg></span><span class="t" data-i18n="pu.title">Паверапы</span></div>
+      <div class="cur-badge pu-cur"><img id="powerupsCurIcon" alt=""><span id="powerupsCurrency">0</span></div>
+    </div>
+    <div id="powerupsList"></div>
+  </div>
+</div>
+
+<!-- Награда за просмотр рекламы (плюсик у бейджа пузыриков). Тексты, состояние
      (ask / wait / ok / err) и сам показ рекламы — в source/adreward.js. -->
 <div id="adRewardModal" class="menu-modal hidden" data-state="ask">
   <div class="box" style="align-items:center; text-align:center;">
-    <button class="modal-close" id="adRewardClose" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
-    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" id="adRewardTitle">Бонус</span></div></div>
+    <button class="modal-close" id="adRewardClose" data-i18n-aria="modal.close" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-close"/></svg></button>
+    <div class="modal-head"><div class="h"><span class="ico"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-money"/></svg></span><span class="t" id="adRewardTitle" data-i18n="ad.title">Бонус</span></div></div>
     <img id="adRewardIcon" alt="">
     <div id="adRewardText"></div>
-    <button class="btn small" id="adRewardBtn">Смотреть</button>
+    <button class="btn small" id="adRewardBtn" data-i18n="ad.watch">Смотреть</button>
   </div>
 </div>
 
 <!-- Уведомления о выполненных заданиях (наполняется из source/quests.js) -->
 <div id="questToasts"></div>
 
-<script src="https://sdk.games.s3.yandex.net/sdk.js"></script>
-<!-- Подключаем библиотеку из новой папки lib -->
-<script src="lib/three.min.js"></script>
-<!-- ТЕПЕРЬ ПОДКЛЮЧАЕМ ГЛАВНЫЙ ФАЙЛ КАК МОДУЛЬ -->
-<script type="module" src="source/main.js"></script>
 </body>
 </html>

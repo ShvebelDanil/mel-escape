@@ -240,6 +240,11 @@ const PATTERNS = [
 
 export const Director = { lane: 1, count: 0, lastId: '', acts: 0, coinCd: 0, tAir: -1e9, tRoll: -1e9, tLane: -1e9, tNeed: -1e9 };
 export function resetDirector() { for (const p of PATTERNS) p.last = -999; Object.assign(Director, { lane: 1, count: 0, lastId: '', acts: 0, coinCd: 0, tAir: -1e9, tRoll: -1e9, tLane: -1e9, tNeed: -1e9 }); }
+// Воскрешение (main.js:revive) сносит всё впереди и строит заново под новую, сниженную скорость:
+// старые паттерны на 170 м вперёд были разложены по времени на прежней скорости, и на медленной
+// связки растягивались, а дуги пузыриков расходились с реальным прыжком. Счётчик паттернов и
+// кулдаун наград сохраняем — это продолжение забега, а не новый.
+export function rebaseDirector(lane) { Object.assign(Director, { lane, lastId: '', acts: 0, tAir: -1e9, tRoll: -1e9, tLane: -1e9, tNeed: -1e9 }); }
 
 function predictSpeed(dist) { return Math.min(U.MAX_SPEED, Math.sqrt(G.speed * G.speed + 2 * U.ACCEL * Math.max(0, dist))); }
 function patternById(id) { for (const p of PATTERNS) if (p.id === id) return p; return PATTERNS[0]; }
@@ -268,54 +273,96 @@ function choosePattern(prog, relax) {
 }
 
 // ─── бутылки ─────────────────────────────────────────────────────────────────────
-// Позиция бутылки вынесена из спавна отдельно: тот же расчёт нужен ЗАРАНЕЕ, чтобы
-// отбросить награду, которую перекрыли филлеры. Паттерн объявляет награды в build(),
-// а филлеры досыпают препятствия уже после — и про награды ничего не знают.
+// Награда — это ГРУППА, и на трассе она бывает только в одном из трёх чистых видов:
+//  • дуга (arc) — 5 штук по траектории прыжка над препятствием, целиком;
+//  • подкат (low) — 3 штуки симметрично под верхним препятствием, целиком;
+//  • линия (line) — ряд по полу/крыше парт с видимым зазором LINE_PAD_Z до препятствий на обоих концах.
+// Раньше бутылки ставились поштучно и лишние выкидывались по одной — отсюда «дырявые» дуги,
+// линии, упёртые в объект, и половинки подката. Теперь дуга и подкат ставятся всё-или-ничего,
+// а у линии берётся самый длинный чистый отрезок (не короче GROUP_MIN). Тот же закон держит и
+// entities.js:spawnObstacle, когда препятствие СЛЕДУЮЩЕГО паттерна приходит на уже стоящую группу.
+// Проверка идёт по УЖЕ ОТСПАВНЕННЫМ препятствиям (ENT.activeObstacles), а не по obs паттерна: первая
+// бутылка дуги стоит на -JUMP_T/2 и уезжает в зону предыдущего паттерна, чьи obs уже стёрты.
+// Вызывать только ПОСЛЕ спавна препятствий паттерна (шаг 4 в fillSpawns).
+// Полосы разнесены на 2.3 м, самый широкий объект — 1.02 м (баннер), поэтому по X достаточно сравнить полосу.
 const COIN_PAD_Z = ENT.COIN_PAD_Z, COIN_PAD_UP = ENT.COIN_PAD_UP, COIN_PAD_DOWN = ENT.COIN_PAD_DOWN;
-let _cy = 0, _ct = 0;                         // позиция очередной бутылки: высота и время от начала паттерна
+const LINE_PAD_Z = ENT.LINE_PAD_Z, GROUP_MIN = ENT.GROUP_MIN;
+const COIN_SEP = COIN_STEP;                   // ближе этого к чужой бутылке в том же ряду не ставим — группы не слипаются
+const GZ = new Float32Array(9), GY = new Float32Array(9);   // координаты группы-кандидата (максимум 9 бутылок)
+let _cy = 0, _ct = 0, gFrom = 0, gTo = 0, grpSeq = 0;
 function rewCount(r, v) {
   if (r.k === 'arc') return 5;
   if (r.k === 'low') return 3;
   return U.clamp(Math.round((r.t1 - r.t0) * v / COIN_STEP), 1, 8) + 1;
 }
-function rewCoin(r, i, n, v) {
+function rewCoin(r, i, n) {
   if (r.k === 'arc') { const tt = i / 4 * JUMP_T; _ct = r.time - JUMP_T / 2 + tt; _cy = 0.95 + jumpY(tt); }
   else if (r.k === 'low') { _ct = r.time + (i - 1) * 0.2; _cy = 0.6; }
   else { _ct = r.t0 + (r.t1 - r.t0) * i / (n - 1); _cy = r.y; }
 }
-// Проверка идёт по УЖЕ ОТСПАВНЕННЫМ препятствиям (ENT.activeObstacles), а не по массиву obs
-// текущего паттерна, и это принципиально: время бутылки бывает отрицательным (первая бутылка
-// арки прыжка стоит на -JUMP_T/2, то есть на 27 м/с — на 8.7 м раньше начала паттерна, а зазор
-// между паттернами всего MIN_GAP_M = 4 м), и такая бутылка уезжает в зону ПРЕДЫДУЩЕГО паттерна.
-// Его препятствия из obs уже стёрты, а чистка в entities.js:spawnObstacle() ловит только обратный
-// случай — когда препятствие приходит после бутылки. Из-за этого бутылки иногда вставали внутрь
-// объекта на стыке паттернов. Правило здесь то же, что в той чистке, — один закон на оба стыка.
-// Вызывать только ПОСЛЕ спавна препятствий паттерна (шаг 4 в fillSpawns), иначе они не учтутся.
-// Полосы разнесены на 2.3 м, самый широкий объект — 1.02 м (баннер) при полуширине бутылки 0.31,
-// поэтому по X достаточно сравнить полосу. На крыше парты бутылка стоять может, внутри парты — нет.
-function coinFree(r, z0, v) {
-  const cx = U.LANES[r.l], cz = z0 + _ct * v;
+function coinFree(l, z, y, padZ) {
+  const cx = U.LANES[l];
   for (let i = 0; i < ENT.activeObstacles.length; i++) {
     const o = ENT.activeObstacles[i];
-    if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - cz) >= o.hz + COIN_PAD_Z) continue;
-    if (_cy + COIN_PAD_UP > o.y0 && _cy - COIN_PAD_DOWN < o.y1) return false;
+    if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - z) >= o.hz + padZ) continue;
+    if (y + COIN_PAD_UP > o.y0 && y - COIN_PAD_DOWN < o.y1) return false;   // на крыше парты — можно, внутри — нет
+  }
+  for (let i = 0; i < ENT.activeCoins.length; i++) {
+    const c = ENT.activeCoins[i];
+    if (Math.abs(c.x - cx) < 0.5 && Math.abs(c.z - z) < COIN_SEP) return false;
+  }
+  for (let i = 0; i < PWR.activePickups.length; i++) {
+    const p = PWR.activePickups[i];
+    if (Math.abs(p.x - cx) < 1.3 && Math.abs(p.z - z) < 1.8) return false;   // иконка паверапа читалась бы как пузырик
   }
   return true;
 }
-function rewBlocked(r, v, z0) {
+// Раскладывает группу в GZ/GY и решает, что из неё можно поставить: [gFrom, gTo). false — ничего.
+function evalGroup(r, z0, v) {
   const n = rewCount(r, v);
-  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (!coinFree(r, z0, v)) return true; }
-  return false;
+  for (let i = 0; i < n; i++) { rewCoin(r, i, n); GZ[i] = z0 + _ct * v; GY[i] = _cy; }
+  if (r.k !== 'line') {
+    for (let i = 0; i < n; i++) if (!coinFree(r.l, GZ[i], GY[i], COIN_PAD_Z)) return false;
+    gFrom = 0; gTo = n; return true;
+  }
+  let best = 0, run = 0;
+  for (let i = 0; i < n; i++) {
+    if (coinFree(r.l, GZ[i], GY[i], LINE_PAD_Z)) { if (++run > best) { best = run; gTo = i + 1; } }
+    else run = 0;
+  }
+  if (best < GROUP_MIN) return false;
+  gFrom = gTo - best; return true;
 }
-// Возвращает, сколько бутылок реально встало: если награду выбило препятствиями целиком,
-// кулдаун сбрасывать нельзя — иначе на трассе появляется участок вообще без бутылок.
-// Награда всегда ставится ОДИНОЧНЫМИ чекушками по центру ряда. Удвоение MAX WIN сюда не лезет
-// нарочно: спавн идёт на 170 м вперёд игрока, и бафф опаздывал бы на эти метры в обе стороны.
-// Раздвоением занимается powerups.js:updateDouble уже на подлёте игрока.
-function spawnReward(r, z0, v) {
-  const n = rewCount(r, v); let placed = 0;
-  for (let i = 0; i < n; i++) { rewCoin(r, i, n, v); if (coinFree(r, z0, v)) { ENT.spawnCoin(U.LANES[r.l], _cy, z0 + _ct * v); placed++; } }
-  return placed;
+// Ставит группу, разложенную последним УСПЕШНЫМ evalGroup. Возвращает число бутылок.
+// Удвоение MAX WIN сюда не лезет нарочно: спавн идёт на 170 м вперёд, и бафф опаздывал бы
+// на эти метры. Раздвоением занимается powerups.js:updateDouble уже на подлёте игрока.
+function spawnGroup(r) {
+  const x = U.LANES[r.l], grp = ++grpSeq, line = r.k === 'line' ? 1 : 0;
+  for (let i = gFrom; i < gTo; i++) ENT.spawnCoin(x, GY[i], GZ[i], grp, line);
+  return gTo - gFrom;
+}
+
+// Боковая линия — смысл магнита: пузырики сразу в двух рядах, параллельно основной награде,
+// в ряду, куда маршрут в этот момент НЕ ведёт. Без магнита — либо рискнуть и свернуть, либо
+// оставить; с магнитом (тянет все три ряда на MAG_RANGE вперёд) забирается всё.
+// Баланс: шанс небольшой, выше только если магнит точно будет активен, когда игрок сюда
+// добежит, а каждая боковая бутылка удлиняет кулдаун наград на SIDE_CD — средний поток
+// пузыриков без магнита почти не меняется, а магнит даёт заметную прибавку.
+const SIDE_N = 5, SIDE_P = 0.2, SIDE_P_MAG = 0.6, SIDE_CD = 0.15;
+const sideRew = { k: 'line', l: 1, t0: 0, t1: 0, y: 0.95, must: false, time: 0 };
+function laneOffRoute(l, t0, t1) {
+  for (let t = t0; t < t1 + 0.06; t += 0.12) { b.routeLanes(t, busy); if (busy.indexOf(l) >= 0) return false; }
+  return true;
+}
+function trySide(r, z0, v) {
+  const tc = r.k === 'line' ? (r.t0 + r.t1) * 0.5 : r.time, half = (SIDE_N - 1) * 0.5 * COIN_STEP / v;
+  sideRew.t0 = tc - half; sideRew.t1 = tc + half;
+  const off = Math.random() < 0.5 ? 1 : 2;
+  for (let j = 0; j < 2; j++) {
+    sideRew.l = (r.l + off + j) % 3;
+    if (sideRew.l !== r.l && laneOffRoute(sideRew.l, sideRew.t0, sideRew.t1) && evalGroup(sideRew, z0, v)) return spawnGroup(sideRew);
+  }
+  return 0;
 }
 
 // ─── паверапы ────────────────────────────────────────────────────────────────────
@@ -330,7 +377,7 @@ function puFree(l, t, z0, v) {
     if (Math.abs(o.x - cx) > 0.1 || Math.abs(o.z - cz) >= o.hz + PU_HZ) continue;
     if (PU_Y1 > o.y0 && PU_Y0 < o.y1) return false;
   }
-  // Поверх награды тоже не лепим: иконка перекрыла бы чекушки и читалась бы как одна из них.
+  // Поверх награды тоже не лепим: иконка перекрыла бы пузырики и читалась бы как один из них.
   for (let i = 0; i < ENT.activeCoins.length; i++) {
     const c = ENT.activeCoins[i];
     if (Math.abs(c.x - cx) < 1.3 && Math.abs(c.z - cz) < 1.8) return false;
@@ -402,19 +449,22 @@ export function fillSpawns() {
     sortObsByTime();
     for (let i = 0; i < nObs; i++) { const o = obs[i]; ENT.spawnObstacle(o.t, o.x, z0 + o.time * v, o.rot); }
 
-    // 4) награда. Обязательная идёт всегда — она подсказывает маршрут, и отдельные
-    // перекрытые бутылки из неё отсеются поштучно в spawnReward. Случайная берётся
-    // только чистая: если все попытки заняты препятствиями, кулдаун остаётся
-    // отрицательным и награда выпадет на следующем паттерне.
+    // 4) награда. Обязательная идёт первой — она подсказывает маршрут; если её не поставить
+    // чисто, решает обычный жребий. Случайная берётся только чистая: если все попытки заняты,
+    // кулдаун остаётся отрицательным и награда выпадет на следующем паттерне.
     let pick = null;
-    for (let i = 0; i < nRew; i++) if (rewards[i].must) { pick = rewards[i]; break; }
+    for (let i = 0; i < nRew; i++) if (rewards[i].must && evalGroup(rewards[i], z0, v)) { pick = rewards[i]; break; }
     if (!pick && Director.coinCd <= 0 && nRew) {
-      for (let k = 0; k < 4; k++) { const c = rewards[U.randi(0, nRew - 1)]; if (!rewBlocked(c, v, z0)) { pick = c; break; } }
+      for (let k = 0; k < 4; k++) { const c = rewards[U.randi(0, nRew - 1)]; if (evalGroup(c, z0, v)) { pick = c; break; } }
     }
-    if (pick) { if (spawnReward(pick, z0, v)) Director.coinCd = U.rand(1.6, 3.0); }
-    else if (Director.coinCd <= 0 && gap >= 0.8) {
+    if (!pick && Director.coinCd <= 0 && gap >= 0.8) {
       gapRew.l = Director.lane; gapRew.t0 = -gap + 0.25; gapRew.t1 = -0.3;
-      if (spawnReward(gapRew, z0, v)) Director.coinCd = U.rand(1.6, 3.0);
+      if (evalGroup(gapRew, z0, v)) pick = gapRew;
+    }
+    if (pick && spawnGroup(pick)) {
+      Director.coinCd = U.rand(1.6, 3.0);
+      const magOn = PWR.active.magnet > (z0 - player.z) / v;   // магнит ещё будет активен, когда игрок сюда добежит
+      if (Math.random() < (magOn ? SIDE_P_MAG : SIDE_P)) Director.coinCd += trySide(pick, z0, v) * SIDE_CD;
     }
     Director.coinCd -= gap + b.len;
 
